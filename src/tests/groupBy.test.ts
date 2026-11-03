@@ -1,5 +1,4 @@
-import { describe, it } from 'node:test';
-import assert from 'node:assert/strict';
+import { describe, it, expect } from 'vitest';
 import groupBy from '../utils/groupBy.js';
 
 // ==========================================
@@ -38,7 +37,7 @@ interface Incident {
 // 2. Test Suite dành riêng cho PingPulse
 // ==========================================
 
-describe('PingPulse - groupBy Utility Tests', () => {
+describe('PingPulse - groupBy Utility Tests (Vitest)', () => {
   // Test case 1: Gom nhóm Monitor theo trạng thái hoạt động (UP / DOWN / DEGRADED)
   it('should group monitors by their operational status (UP / DOWN / DEGRADED)', () => {
     const monitors: readonly Monitor[] = [
@@ -86,48 +85,69 @@ describe('PingPulse - groupBy Utility Tests', () => {
 
     const groupedByStatus = groupBy(monitors, (m) => m.status);
 
-    assert.ok(groupedByStatus.UP);
-    assert.ok(groupedByStatus.DOWN);
-    assert.ok(groupedByStatus.DEGRADED);
+    expect(groupedByStatus.UP).toBeDefined();
+    expect(groupedByStatus.DOWN).toBeDefined();
+    expect(groupedByStatus.DEGRADED).toBeDefined();
 
-    assert.strictEqual(groupedByStatus.UP.length, 2);
-    assert.strictEqual(groupedByStatus.DOWN.length, 2);
-    assert.strictEqual(groupedByStatus.DEGRADED.length, 1);
+    expect(groupedByStatus.UP).toHaveLength(2);
+    expect(groupedByStatus.DOWN).toHaveLength(2);
+    expect(groupedByStatus.DEGRADED).toHaveLength(1);
 
-    assert.deepStrictEqual(
-      groupedByStatus.UP.map((m) => m.id),
-      ['mon-1', 'mon-3']
-    );
-    assert.deepStrictEqual(
-      groupedByStatus.DOWN.map((m) => m.id),
-      ['mon-2', 'mon-5']
-    );
+    expect(groupedByStatus.UP?.map((m) => m.id)).toEqual(['mon-1', 'mon-3']);
+    expect(groupedByStatus.DOWN?.map((m) => m.id)).toEqual(['mon-2', 'mon-5']);
   });
 
   // Test case 2: Gom nhóm PingLog theo HTTP status code (number key: 200, 500, 504)
   it('should group ping check logs by numeric HTTP status code', () => {
     const logs: readonly PingLog[] = [
-      { id: 'log-1', monitorId: 'mon-1', statusCode: 200, latencyMs: 45, timestamp: 1710000000 },
-      { id: 'log-2', monitorId: 'mon-1', statusCode: 200, latencyMs: 52, timestamp: 1710000060 },
-      { id: 'log-3', monitorId: 'mon-2', statusCode: 500, latencyMs: 820, timestamp: 1710000120 },
-      { id: 'log-4', monitorId: 'mon-3', statusCode: 504, latencyMs: 5000, timestamp: 1710000180 },
-      { id: 'log-5', monitorId: 'mon-2', statusCode: 500, latencyMs: 760, timestamp: 1710000240 },
+      {
+        id: 'log-1',
+        monitorId: 'mon-1',
+        statusCode: 200,
+        latencyMs: 45,
+        timestamp: 1710000000,
+      },
+      {
+        id: 'log-2',
+        monitorId: 'mon-1',
+        statusCode: 200,
+        latencyMs: 52,
+        timestamp: 1710000060,
+      },
+      {
+        id: 'log-3',
+        monitorId: 'mon-2',
+        statusCode: 500,
+        latencyMs: 820,
+        timestamp: 1710000120,
+      },
+      {
+        id: 'log-4',
+        monitorId: 'mon-3',
+        statusCode: 504,
+        latencyMs: 5000,
+        timestamp: 1710000180,
+      },
+      {
+        id: 'log-5',
+        monitorId: 'mon-2',
+        statusCode: 500,
+        latencyMs: 760,
+        timestamp: 1710000240,
+      },
     ];
 
     const groupedByCode = groupBy(logs, (log) => log.statusCode);
 
-    assert.ok(groupedByCode[200]);
-    assert.ok(groupedByCode[500]);
-    assert.ok(groupedByCode[504]);
+    expect(groupedByCode[200]).toBeDefined();
+    expect(groupedByCode[500]).toBeDefined();
+    expect(groupedByCode[504]).toBeDefined();
 
-    assert.strictEqual(groupedByCode[200].length, 2);
-    assert.strictEqual(groupedByCode[500].length, 2);
-    assert.strictEqual(groupedByCode[504].length, 1);
+    expect(groupedByCode[200]).toHaveLength(2);
+    expect(groupedByCode[500]).toHaveLength(2);
+    expect(groupedByCode[504]).toHaveLength(1);
 
-    assert.deepStrictEqual(
-      groupedByCode[500].map((l) => l.id),
-      ['log-3', 'log-5']
-    );
+    expect(groupedByCode[500]?.map((l) => l.id)).toEqual(['log-3', 'log-5']);
   });
 
   // Test case 3: Gom nhóm monitors theo Region hạ tầng
@@ -153,26 +173,43 @@ describe('PingPulse - groupBy Utility Tests', () => {
 
     const groupedByRegion = groupBy(monitors, (m) => m.region);
 
-    assert.ok(groupedByRegion['ap-southeast-1']);
-    assert.ok(groupedByRegion['us-east-1']);
-    assert.strictEqual(groupedByRegion['ap-southeast-1'].length, 1);
-    assert.strictEqual(groupedByRegion['us-east-1'].length, 1);
+    expect(groupedByRegion['ap-southeast-1']).toBeDefined();
+    expect(groupedByRegion['us-east-1']).toBeDefined();
+    expect(groupedByRegion['ap-southeast-1']).toHaveLength(1);
+    expect(groupedByRegion['us-east-1']).toHaveLength(1);
   });
 
   // Test case 4: Gom nhóm sự cố (Incidents) theo mức độ nghiêm trọng (Severity)
   it('should group alert incidents by severity level', () => {
     const incidents: readonly Incident[] = [
-      { id: 'inc-1', monitorId: 'mon-2', severity: 'CRITICAL', message: 'Endpoint unreachable' },
-      { id: 'inc-2', monitorId: 'mon-4', severity: 'WARNING', message: 'High response latency > 2000ms' },
-      { id: 'inc-3', monitorId: 'mon-1', severity: 'INFO', message: 'SSL certificate renewed' },
+      {
+        id: 'inc-1',
+        monitorId: 'mon-2',
+        severity: 'CRITICAL',
+        message: 'Endpoint unreachable',
+      },
+      {
+        id: 'inc-2',
+        monitorId: 'mon-4',
+        severity: 'WARNING',
+        message: 'High response latency > 2000ms',
+      },
+      {
+        id: 'inc-3',
+        monitorId: 'mon-1',
+        severity: 'INFO',
+        message: 'SSL certificate renewed',
+      },
     ];
 
     const groupedBySeverity = groupBy(incidents, (inc) => inc.severity);
 
-    assert.ok(groupedBySeverity.CRITICAL);
-    assert.ok(groupedBySeverity.WARNING);
-    assert.ok(groupedBySeverity.INFO);
-    assert.strictEqual(groupedBySeverity.CRITICAL[0]?.message, 'Endpoint unreachable');
+    expect(groupedBySeverity.CRITICAL).toBeDefined();
+    expect(groupedBySeverity.WARNING).toBeDefined();
+    expect(groupedBySeverity.INFO).toBeDefined();
+    expect(groupedBySeverity.CRITICAL?.[0]?.message).toBe(
+      'Endpoint unreachable'
+    );
   });
 
   // Test case 5: Xử lý danh sách log rỗng (Edge case)
@@ -180,6 +217,6 @@ describe('PingPulse - groupBy Utility Tests', () => {
     const emptyLogs: readonly PingLog[] = [];
     const result = groupBy(emptyLogs, (l) => l.statusCode);
 
-    assert.deepStrictEqual(result, {});
+    expect(result).toEqual(Object.create(null));
   });
 });
