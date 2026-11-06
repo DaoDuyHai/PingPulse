@@ -62,6 +62,20 @@ Nhật ký phát triển dự án **PingPulse** (Hệ thống giám sát Uptime 
 
 ---
 
+## 📅 2026-11-06 (Sprint 1 - Ngày 5: Ticket [PP-5] - Hàm `omit`)
+
+### 🎯 Đã hoàn thành
+- [x] Hoàn thành hàm tiện ích [src/utils/omit.ts](file:///d:/PingPulse/src/utils/omit.ts) (ngược lại với `pick`, chuyên dùng để lọc bỏ các trường nhạy cảm như `secretToken`, `internalIp`, `debugStackTrace`).
+- [x] Áp dụng tư duy bất biến (Immutability): sao chép nông `{ ...obj }` trước khi `delete` để không làm thay đổi object gốc.
+- [x] Ràng buộc chặt chẽ với TypeScript Generics: `<T extends object, K extends keyof T>` và kiểu trả về `Omit<T, K>`.
+- [x] Viết bộ kiểm thử 5 ca trong [src/tests/omit.test.ts](file:///d:/PingPulse/src/tests/omit.test.ts) kiểm tra: loại bỏ nhiều key nhạy cảm, bỏ 1 key, mảng key rỗng, bỏ toàn bộ keys, và tính bất biến (`Object.freeze`).
+- [x] Cán mốc **21/21 tests pass** trên Vitest, hoàn thành **4 / 10** hàm tiện ích cốt lõi.
+
+### 🚧 Vướng mắc & Bài học
+- **Vòng đời Git (Staging vs Commit):** Sau khi `git add .`, file mới chỉ nằm ở khu vực chuẩn bị (Staging Area). Nếu `git push` ngay mà quên `git commit` thì Git chỉ đẩy nhánh trống (`Total 0`) mà chưa có code mới lên GitHub. Cần `git commit` đóng gói trước rồi mới `git push`.
+
+---
+
 ## 🚀 Kế hoạch tiếp theo (Ngày mai)
-- [ ] Hoàn thành ticket **[PP-5]**: Viết hàm tiện ích `omit.ts` (ngược lại với `pick`, loại bỏ các key được chỉ định).
-- [ ] Viết test suite Vitest cho `omit.test.ts` (mục tiêu cán mốc 4/10 hàm tiện ích).
+- [ ] Hoàn thành ticket **[PP-6]**: Viết hàm tiện ích số 5 (hàm bất đồng bộ `sleep` / `delay` hoặc cơ chế `retry` khi ping website thất bại).
+- [ ] Viết test suite Vitest đi kèm (mục tiêu cán mốc 5/10 hàm tiện ích).
