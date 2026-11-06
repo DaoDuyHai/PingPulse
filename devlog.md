@@ -62,20 +62,21 @@ Nhật ký phát triển dự án **PingPulse** (Hệ thống giám sát Uptime 
 
 ---
 
-## 📅 2026-11-06 (Sprint 1 - Ngày 5: Ticket [PP-5] - Hàm `omit`)
+## 📅 2026-11-06 (Sprint 1 - Ngày 5: Ticket [PP-5] `omit`, Ticket [PP-6] `sleep` & Ticket [PP-7] `unique`)
 
 ### 🎯 Đã hoàn thành
-- [x] Hoàn thành hàm tiện ích [src/utils/omit.ts](file:///d:/PingPulse/src/utils/omit.ts) (ngược lại với `pick`, chuyên dùng để lọc bỏ các trường nhạy cảm như `secretToken`, `internalIp`, `debugStackTrace`).
-- [x] Áp dụng tư duy bất biến (Immutability): sao chép nông `{ ...obj }` trước khi `delete` để không làm thay đổi object gốc.
-- [x] Ràng buộc chặt chẽ với TypeScript Generics: `<T extends object, K extends keyof T>` và kiểu trả về `Omit<T, K>`.
-- [x] Viết bộ kiểm thử 5 ca trong [src/tests/omit.test.ts](file:///d:/PingPulse/src/tests/omit.test.ts) kiểm tra: loại bỏ nhiều key nhạy cảm, bỏ 1 key, mảng key rỗng, bỏ toàn bộ keys, và tính bất biến (`Object.freeze`).
-- [x] Cán mốc **21/21 tests pass** trên Vitest, hoàn thành **4 / 10** hàm tiện ích cốt lõi.
+- [x] **Hàm `omit` ([src/utils/omit.ts](file:///d:/PingPulse/src/utils/omit.ts)):** Lọc bỏ các trường nhạy cảm khỏi object, áp dụng shallow copy `{ ...obj }` để đảm bảo tính bất biến, hoàn thành 5 test case trong [src/tests/omit.test.ts](file:///d:/PingPulse/src/tests/omit.test.ts).
+- [x] **Hàm `sleep` ([src/utils/sleep.ts](file:///d:/PingPulse/src/utils/sleep.ts)):** Hàm bất đồng bộ giúp tạm dừng tiến trình bằng `Promise<void>` và `setTimeout`. Viết 4 test case trong [src/tests/sleep.test.ts](file:///d:/PingPulse/src/tests/sleep.test.ts) áp dụng kỹ thuật giả lập thời gian **Vitest Fake Timers** (`vi.advanceTimersByTimeAsync`).
+- [x] **Hàm `unique` ([src/utils/unique.ts](file:///d:/PingPulse/src/utils/unique.ts)):** Khử trùng lặp mảng danh sách URL, IP, ports. So sánh 2 cách tiếp cận (dùng `Map` $O(n)$ vs dùng `Set`), chốt phương án hiện đại `[...new Set(arr)]`.
+- [x] Viết trọn bộ 7 test case trong [src/tests/unique.test.ts](file:///d:/PingPulse/src/tests/unique.test.ts) (khử trùng URL, số, mảng rỗng, bảo toàn thứ tự ban đầu, immutability).
+- [x] Cán mốc **32 / 32 tests pass** trên Vitest, chính thức hoàn thành **6 / 10** hàm tiện ích (vượt 60% chặng đường)!
 
 ### 🚧 Vướng mắc & Bài học
 - **Vòng đời Git (Staging vs Commit):** Sau khi `git add .`, file mới chỉ nằm ở khu vực chuẩn bị (Staging Area). Nếu `git push` ngay mà quên `git commit` thì Git chỉ đẩy nhánh trống (`Total 0`) mà chưa có code mới lên GitHub. Cần `git commit` đóng gói trước rồi mới `git push`.
+- **Cơ chế của `await sleep()` vs `setTimeout`:** Hiểu rõ vì sao `await sleep()` không làm treo toàn bộ server Node.js (Event Loop vẫn chạy các request khác), mà chỉ tạm dừng cục bộ tiến trình ngay bên trong hàm đó để code có thể chạy tuần tự trong vòng lặp `for`.
 
 ---
 
 ## 🚀 Kế hoạch tiếp theo (Ngày mai)
-- [ ] Hoàn thành ticket **[PP-6]**: Viết hàm tiện ích số 5 (hàm bất đồng bộ `sleep` / `delay` hoặc cơ chế `retry` khi ping website thất bại).
-- [ ] Viết test suite Vitest đi kèm (mục tiêu cán mốc 5/10 hàm tiện ích).
+- [ ] Hoàn thành ticket **[PP-8]**: Viết hàm tiện ích số 7 trong danh sách (`compact.ts` - loại bỏ các giá trị falsy `null`, `undefined`, `""` khỏi mảng).
+- [ ] Viết test suite Vitest đi kèm (hướng tới mục tiêu 7/10 hàm tiện ích).
