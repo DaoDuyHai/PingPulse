@@ -1,36 +1,17 @@
-import type { Result } from '../types/result.js';
-
-export type { Result };
-
 /**
- * Phân tích cú pháp chuỗi JSON an toàn:
- * - Khi truyền 1 tham số `safeJsonParse(text)`: Trả về `Result<T, Error>` theo chuẩn Discriminated Union.
- * - Khi truyền 2 tham số `safeJsonParse(text, fallback)`: Trả về `T` (nếu lỗi sẽ trả về `fallback`).
+ * Parse chuỗi JSON an toàn bằng try/catch, không làm sập chương trình.
+ * Nếu JSON hợp lệ -> trả về dữ liệu đã parse.
+ * Nếu JSON lỗi -> trả về giá trị fallback (mặc định là null).
+ *
+ * @param text - Chuỗi JSON cần parse
+ * @param fallback - Giá trị dự phòng trả về khi parse thất bại (mặc định là null)
  */
-function safeJsonParse<T>(text: string): Result<T, Error>;
-function safeJsonParse<T>(text: string, fallback: T): T;
-function safeJsonParse<T>(
-  text: string,
-  fallback?: T
-): Result<T, Error> | T {
-  const hasFallback = arguments.length >= 2;
-
+const safeJsonParse = <T>(text: string, fallback: T | null = null): T | null => {
   try {
-    const parsed = JSON.parse(text) as T;
-    if (!hasFallback) {
-      return { ok: true, data: parsed };
-    }
-    return parsed;
-  } catch (error) {
-    if (!hasFallback) {
-      return {
-        ok: false,
-        error: error instanceof Error ? error : new Error(String(error)),
-      };
-    }
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return fallback!;
+    return JSON.parse(text) as T;
+  } catch {
+    return fallback;
   }
-}
+};
 
 export default safeJsonParse;

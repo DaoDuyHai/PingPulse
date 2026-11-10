@@ -1,0 +1,17 @@
+services:
+  postgres-docker:
+    image: postgres:16-alpine
+    container_name: pingpulse-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-pingpulse_db}
+    ports:
+      # Máy tính của bạn (${DB_PORT:-5433}) -> Bên trong Docker (5432)
+      - "${DB_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

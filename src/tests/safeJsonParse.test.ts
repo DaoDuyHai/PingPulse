@@ -1,88 +1,44 @@
 import { describe, it, expect } from 'vitest';
 import safeJsonParse from '../utils/safeJsonParse.js';
 
-describe('PingPulse - safeJsonParse Utility Tests (Vitest)', () => {
-  // ========================================================
-  // Phần 1: Kiểm thử chế độ Result<T, E> (Discriminated Union)
-  // ========================================================
-  describe('Result<T, E> Pattern (1 argument)', () => {
-    it('should return { ok: true, data } when JSON is valid', () => {
-      const raw = '{"status": "UP", "latencyMs": 42}';
-      const result = safeJsonParse<{ status: string; latencyMs: number }>(raw);
+describe('PingPulse - safeJsonParse Utility Tests', () => {
+  it('should parse valid JSON object', () => {
+    const raw = '{"status": "UP", "latencyMs": 42}';
+    const result = safeJsonParse<{ status: string; latencyMs: number }>(raw);
 
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        // TypeScript thu hẹp kiểu an toàn sang result.data
-        expect(result.data).toEqual({ status: 'UP', latencyMs: 42 });
-      }
-    });
-
-    it('should return { ok: false, error } when JSON is invalid without throwing', () => {
-      const invalid = '<html>502 Bad Gateway</html>';
-      const result = safeJsonParse(invalid);
-
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        // TypeScript thu hẹp kiểu an toàn sang result.error
-        expect(result.error).toBeInstanceOf(Error);
-      }
-    });
+    expect(result).toEqual({ status: 'UP', latencyMs: 42 });
   });
 
-  // ========================================================
-  // Phần 2: Kiểm thử chế độ Fallback truyền thống (2 arguments)
-  // ========================================================
-  describe('Fallback Pattern (2 arguments)', () => {
-    it('should correctly parse valid JSON object strings', () => {
-      const raw = '{"status": "UP", "latencyMs": 42, "url": "https://api.pingpulse.dev"}';
-      const fallback = { status: 'DOWN', latencyMs: 0, url: '' };
+  it('should parse valid JSON array', () => {
+    const raw = '["https://google.com", "https://github.com"]';
+    const result = safeJsonParse<string[]>(raw);
 
-      const result = safeJsonParse(raw, fallback);
+    expect(result).toEqual(['https://google.com', 'https://github.com']);
+  });
 
-      expect(result).toEqual({
-        status: 'UP',
-        latencyMs: 42,
-        url: 'https://api.pingpulse.dev',
-      });
-    });
+  it('should return null when JSON is invalid and no fallback provided', () => {
+    const invalid = '<html>502 Bad Gateway</html>';
+    const result = safeJsonParse(invalid);
 
-    it('should correctly parse valid JSON array strings', () => {
-      const raw = '["https://api.pingpulse.dev", "https://auth.pingpulse.dev"]';
-      const fallback: string[] = [];
+    expect(result).toBeNull();
+  });
 
-      const result = safeJsonParse(raw, fallback);
+  it('should return fallback value when JSON is invalid', () => {
+    const invalid = '<html>502 Bad Gateway</html>';
+    const fallback = { error: true, code: 502 };
+    const result = safeJsonParse(invalid, fallback);
 
-      expect(result).toEqual(['https://api.pingpulse.dev', 'https://auth.pingpulse.dev']);
-    });
+    expect(result).toEqual(fallback);
+  });
 
-    it('should return fallback when receiving malformed HTML error pages', () => {
-      const htmlResponse = '<html><body>502 Bad Gateway - Nginx</body></html>';
-      const fallback = { error: true, code: 502 };
+  it('should return fallback when string is empty or whitespace', () => {
+    expect(safeJsonParse('', 'default')).toBe('default');
+    expect(safeJsonParse('   ', 'default')).toBe('default');
+  });
 
-      const result = safeJsonParse(htmlResponse, fallback);
-
-      expect(result).toEqual(fallback);
-    });
-
-    it('should return fallback when JSON string is cut off or malformed', () => {
-      const malformed = '{"status": "UP", "latencyMs":';
-      const fallback = { status: 'UNKNOWN' };
-
-      expect(safeJsonParse(malformed, fallback)).toEqual(fallback);
-      expect(safeJsonParse('{ unquoted_key: 123 }', fallback)).toEqual(fallback);
-    });
-
-    it('should return fallback when input string is empty', () => {
-      const fallback = { default: true };
-
-      expect(safeJsonParse('', fallback)).toEqual(fallback);
-      expect(safeJsonParse('   ', fallback)).toEqual(fallback);
-    });
-
-    it('should parse primitive JSON values properly', () => {
-      expect(safeJsonParse('12345', 0)).toBe(12345);
-      expect(safeJsonParse('true', false)).toBe(true);
-      expect(safeJsonParse('false', true)).toBe(false);
-    });
+  it('should parse primitive JSON values properly', () => {
+    expect(safeJsonParse('12345')).toBe(12345);
+    expect(safeJsonParse('true')).toBe(true);
+    expect(safeJsonParse('false')).toBe(false);
   });
 });
