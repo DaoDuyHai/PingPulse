@@ -4,6 +4,6 @@ dist
 coverage
 *.log
 .DS_Store
+sql
 
-# Roadmap / Documents
-Lo_trinh_Backend_PingPulse_Quy_trinh_Thuc_tap.pdf
+
