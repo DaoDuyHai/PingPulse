@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { type Request, type Response } from 'express';
 import { prisma } from '../config/db.js';
 import { checkUrl } from '../checker/checkUrl.js';
@@ -147,9 +148,20 @@ export const createMonitor = async (req: Request, res: Response) => {
   });
 };
 
+interface LatestCheckRow {
+  id: bigint;
+  monitor_id: number;
+  is_up: boolean;
+  status_code: number | null;
+  latency_ms: number | null;
+  error: string | null;
+  checked_at: Date;
+}
+
 export const getMonitors = async (req: Request, res: Response) => {
   const userId = getUserId(req);
 
+  // Query 1: Lay danh sach monitor cua user
   const monitors = await prisma.monitors.findMany({
     where: { user_id: userId },
     orderBy: { created_at: 'desc' },
@@ -160,17 +172,37 @@ export const getMonitors = async (req: Request, res: Response) => {
       interval_sec: true,
       status: true,
       created_at: true,
-      checks: {
-        take: 1,
-        orderBy: { checked_at: 'desc' },
-      },
     },
   });
 
-  const data = monitors.map((monitor) => ({
-    ...monitor,
-    checks: monitor.checks.map(serializeCheck),
-  }));
+  if (monitors.length === 0) {
+    return res.status(200).json({
+      message: 'Da lay thanh cong danh sach monitor',
+      data: [],
+    });
+  }
+
+  // Query 2: Loc dung 1 ban ghi check moi nhat cho moi monitor ngay tai PostgreSQL
+  const monitorIds = monitors.map((m) => m.id);
+  const latestChecks = await prisma.$queryRaw<LatestCheckRow[]>`
+    SELECT DISTINCT ON (monitor_id)
+      id, monitor_id, is_up, status_code, latency_ms, error, checked_at
+    FROM checks
+    WHERE monitor_id IN (${Prisma.join(monitorIds)})
+    ORDER BY monitor_id, checked_at DESC
+  `;
+
+  const checkByMonitorId = new Map(
+    latestChecks.map((check) => [check.monitor_id, serializeCheck(check)])
+  );
+
+  const data = monitors.map((monitor) => {
+    const latestCheck = checkByMonitorId.get(monitor.id);
+    return {
+      ...monitor,
+      checks: latestCheck ? [latestCheck] : [],
+    };
+  });
 
   return res.status(200).json({
     message: 'Da lay thanh cong danh sach monitor',
