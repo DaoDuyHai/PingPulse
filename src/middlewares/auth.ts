@@ -1,19 +1,7 @@
 import { type NextFunction, type Request, type Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { createHttpError } from '../utils/httpError.js';
-
-interface UserPayload {
-  username: string;
-  id: number;
-}
-
-declare global {
-  namespace Express {
-    interface Request {
-      user?: UserPayload;
-    }
-  }
-}
+import { type UserPayload } from '../types/express.d.js';
 
 export const verifyUserToken = (
   req: Request,

@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express, { type Request, type Response } from 'express';
 import userRoutes from './routes/userRoutes.js';
+import monitorRoutes from './routes/monitorRoutes.js';
 import { errorHandler } from './middlewares/errorMiddleware.js';
 
 const app = express();
@@ -13,6 +14,7 @@ app.get('/', (_req: Request, res: Response) => {
 });
 
 app.use('/api/users', userRoutes);
+app.use('/api/monitors', monitorRoutes);
 
 app.use(errorHandler);
 

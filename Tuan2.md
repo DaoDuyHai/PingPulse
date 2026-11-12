@@ -13,8 +13,8 @@
 
 - [x] **Task 2.1:** Cài đặt Prisma ORM, chuyển đổi bảng SQL thành `schema.prisma`, chạy lệnh Migration (3 giờ). ✅ ĐÃ HOÀN THÀNH
 - [x] **Task 2.2:** Xây dựng hệ thống Đăng ký / Đăng nhập: Băm mật khẩu (bcrypt), cấp phát Token (JWT), Middleware xác thực (3 giờ). ✅ ĐÃ HOÀN THÀNH
-- [ ] **Task 2.3:** Xây dựng bộ API CRUD Monitor: Thêm, sửa, xóa, xem danh sách (chỉ xem được web của mình, chặn nếu vượt quá 5 web/user) (4 giờ).
-- [ ] **Task 2.4:** API `POST /monitors/:id/check`: Kích hoạt con robot `checkUrl`, ghi lịch sử vào bảng `checks`, cập nhật trạng thái `monitors.status` (3 giờ).
+- [x] **Task 2.3:** Xây dựng bộ API CRUD Monitor: Thêm, sửa, xóa, xem danh sách (chỉ xem được web của mình, chặn nếu vượt quá 5 web/user) (4 giờ). ✅ ĐÃ HOÀN THÀNH
+- [x] **Task 2.4:** API `POST /monitors/:id/check`: Kích hoạt con robot `checkUrl`, ghi lịch sử vào bảng `checks`, cập nhật trạng thái `monitors.status` (3 giờ). ✅ ĐÃ HOÀN THÀNH
 - [ ] **Task 2.5:** Bật Query Log của Prisma, phát hiện và sửa tận gốc lỗi hiệu năng **N+1 Query** (2 giờ).
 
 ---
