@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, type MonitorItem, type UserProfile } from '@/lib/api';
 import { Navbar } from '@/components/Navbar';
@@ -21,31 +21,44 @@ export default function DashboardPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [formSubmitting, setFormSubmitting] = useState(false);
 
-  const loadData = useCallback(async (authToken: string) => {
-    try {
-      const [userRes, monitorsRes] = await Promise.all([
-        api.getMe(authToken),
-        api.getMonitors(authToken),
-      ]);
-      setUser(userRes.data);
-      setMonitors(monitorsRes.data);
-    } catch {
-      localStorage.removeItem('pingpulse_token');
-      router.push('/login');
-    } finally {
-      setLoading(false);
-    }
-  }, [router]);
-
   useEffect(() => {
     const savedToken = localStorage.getItem('pingpulse_token');
     if (!savedToken) {
       router.push('/login');
       return;
     }
-    setToken(savedToken);
-    loadData(savedToken);
-  }, [loadData, router]);
+
+    let isMounted = true;
+
+    const fetchData = async () => {
+      try {
+        const [userRes, monitorsRes] = await Promise.all([
+          api.getMe(savedToken),
+          api.getMonitors(savedToken),
+        ]);
+        if (isMounted) {
+          setToken(savedToken);
+          setUser(userRes.data);
+          setMonitors(monitorsRes.data);
+        }
+      } catch {
+        if (isMounted) {
+          localStorage.removeItem('pingpulse_token');
+          router.push('/login');
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void fetchData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [router]);
 
   const handleLogout = () => {
     localStorage.removeItem('pingpulse_token');
@@ -248,7 +261,6 @@ export default function DashboardPage() {
               const latestCheck = item.checks[0];
               const isUp = item.status === 'up';
               const isDown = item.status === 'down';
-              const isUnknown = !isUp && !isDown;
 
               return (
                 <div
