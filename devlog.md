@@ -1,108 +1,166 @@
-# 📓 Devlog - PingPulse
-
-Nhật ký phát triển dự án **PingPulse** (Hệ thống giám sát Uptime & Performance).
-
----
-
-## 📅 2026-11-02 (Sprint 1 - Ngày 1: Khởi tạo Repo & Setup Môi trường)
-
-### 🎯 Đã hoàn thành
-- [x] Khởi tạo Git repository và cấu trúc thư mục ban đầu cho dự án backend.
-- [x] Cấu hình TypeScript với chế độ nghiêm ngặt cao nhất (**Strict Mode**, `nodenext`, `target: esnext`).
-- [x] Thiết lập bộ công cụ chuẩn hóa mã nguồn: **ESLint** và **Prettier** (`.prettierrc`, `.eslintrc.json`, `eslint-config-prettier`).
-- [x] Tạo các tài liệu dự án ban đầu: [CONTRIBUTING.md](file:///d:/PingPulse/CONTRIBUTING.md), `.gitignore` chuẩn.
-
-### 🚧 Vướng mắc & Bài học
-- **Lỗi encoding UTF-16 LE trên PowerShell:** Khi dùng lệnh `echo "..." > src/index.ts`, PowerShell 5.1 mặc định xuất file mã hóa UTF-16 LE có BOM. `esbuild` / `tsx` chỉ đọc UTF-8 nên báo lỗi `Unexpected ""`.
-  - *Cách khắc phục:* Chuyển đổi mã hóa file về **UTF-8** (hoặc dùng `Set-Content -Encoding utf8`).
-- Hiểu rõ bản chất cờ `--noEmit` trong `npx tsc --noEmit`: Dùng để kiểm tra lỗi kiểu dữ liệu (Type-checking) thuần túy mà không sinh ra file `.js` rác trong repo.
-- **Thời gian:** Ước lượng 2.5 giờ | Thực tế: 3 giờ.
+# 📓 SỔ TAY KIẾN THỨC BACKEND - PINGPULSE
+> *Tài liệu cô đọng để đọc lại mỗi ngày – Nắm chắc tư duy kiến trúc và bản chất công nghệ.*
 
 ---
 
-## 📅 2026-11-03 (Sprint 1 - Ngày 2: Ticket [PP-2] - Hàm `groupBy`)
+## 🧭 PHẦN 1: TƯ DUY LẬP TRÌNH & TYPESCRIPT NÂNG CAO
 
-### 🎯 Đã hoàn thành
-- [x] Hoàn thành hàm tiện ích generic [src/utils/groupBy.ts](file:///d:/PingPulse/src/utils/groupBy.ts).
-- [x] Cải tiến khởi tạo đối tượng bằng `Object.create(null)` thay vì `{}` theo chuẩn của `Object.groupBy()` (ECMAScript 2024) để ngăn chặn lỗ hổng **Prototype Pollution**.
-- [x] Viết bộ kiểm thử đầu tiên với dữ liệu thực tế của PingPulse (gom nhóm Monitor theo `status`, gom log kiểm tra theo `statusCode`, theo `region`).
+### 1. Tính bất biến (Immutability) & Lập trình phòng thủ
+* **Không biến đổi dữ liệu gốc:** Tránh dùng `splice`, `push` trực tiếp trên mảng gốc; ưu tiên tạo mảng/object mới (`{ ...obj }`, `slice`).
+* **Lọc trường nhạy cảm (`pick` / `omit`):** Luôn loại bỏ các thông tin mật (`password`, `token`, `internalKey`) trước khi trả dữ liệu về phía client.
+* **Chống Prototype Pollution (`groupBy`):** Khi tạo object gom nhóm dạng từ điển, dùng `Object.create(null)` thay vì `{}` để không kế thừa `__proto__`, triệt tiêu lỗ hổng bảo mật ghi đè prototype.
 
-### 🚧 Vướng mắc & Bài học
-- **Node.js ESM imports:** Nhận thức rõ lý do tại sao trong file TypeScript lại phải `import ... from '../utils/groupBy.js'`. Vì TypeScript không tự viết lại chuỗi import khi transpile, và đích đến cuối cùng chạy trên Node.js luôn là mã JavaScript.
-- Khi dùng `Object.create(null)`, đối tượng trả về không có prototype thông thường, cần so sánh với `Object.create(null)` trong assertion.
-- **Thời gian:** Ước lượng 2 giờ | Thực tế: 2.5 giờ.
-
----
-
-## 📅 2026-11-04 (Sprint 1 - Ngày 3: Ticket [PP-3] - Hàm `chunk` & Tích hợp `Vitest`)
-
-### 🎯 Đã hoàn thành
-- [x] Hoàn thành hàm tiện ích [src/utils/chunk.ts](file:///d:/PingPulse/src/utils/chunk.ts) dùng để băm nhỏ mảng phục vụ kiểm soát concurrency (Batch Processing) khi ping hàng loạt website.
-- [x] Tối ưu thuật toán ngắn gọn với `value.slice(i, i + size)` kết hợp bước nhảy `i += size`.
-- [x] Bắt ngoại lệ an toàn `if (size <= 0) throw new Error(...)` để tránh lỗi lặp vô tận (Infinite loop).
-- [x] Quyết định nâng cấp hạ tầng kiểm thử: Cài đặt và cấu hình **Vitest** thay cho runner mặc định của Node để có trải nghiệm test chuyên nghiệp, hỗ trợ Watch Mode (`npm run test:watch`).
-- [x] Chuyển đổi toàn bộ test suite sang cú pháp hiện đại của Vitest (`expect`, `describe`, `it`).
-
-### 🚧 Vướng mắc & Bài học
-- Hiểu được ý nghĩa của chỉ thị `// @ts-expect-error`: Tấm thẻ thông hành báo cho TypeScript biết developer đang cố tình truyền dữ liệu sai kiểu để test runtime resilience.
-- Kiểm thử thành công 11/11 tests trên cả 2 hàm `groupBy` và `chunk`.
-- **Thời gian:** Ước lượng 2 giờ | Thực tế: 2 giờ.
+### 2. Xử lý kiểu dữ liệu nghiêm ngặt (Strict TypeScript)
+* **Tuyệt đối không dùng `any`:** `any` làm mất toàn bộ giá trị của TypeScript. Hãy dùng `unknown` khi chưa rõ kiểu, sau đó dùng Type Guard (`typeof`, `instanceof`) để ép kiểu an toàn.
+* **Discriminated Union (`Result<T, E>`):** Thay vì quăng lỗi (`throw error`) làm sập luồng, gói kết quả vào `{ ok: true, data }` hoặc `{ ok: false, error }`. TypeScript sẽ tự ép người dùng phải kiểm tra `if (res.ok)` mới cho lấy dữ liệu.
+* **Kiểm soát tải với `chunk`:** Chia mảng lớn thành các mẻ nhỏ (batching) để chạy tuần tự hoặc giới hạn song song, bảo vệ tài nguyên mạng và RAM.
+* **Chống bão tác vụ (`debounce` & `retry`):** 
+  * `debounce`: Trì hoãn việc gọi hàm cho đến khi người dùng ngừng thao tác (gõ phím, click liên tục).
+  * `retry`: Tự động thử lại hàm bất đồng bộ khi mạng chập chờn kèm khoảng chờ (`sleep`).
 
 ---
 
-## 📅 2026-11-05 (Sprint 1 - Ngày 4: Ticket [PP-4] - Hàm `pick`)
+## 🗄️ PHẦN 2: DATABASE, POSTGRESQL & PRISMA ORM
 
-### 🎯 Đã hoàn thành
-- [x] Hoàn thành hàm tiện ích [src/utils/pick.ts](file:///d:/PingPulse/src/utils/pick.ts) giúp trích xuất các trường mong muốn và loại bỏ các trường nhạy cảm (`secretToken`, internal keys).
-- [x] Sử dụng TypeScript Generic ràng buộc chặt chẽ: `<T extends object, K extends keyof T>` và kiểu trả về `Pick<T, K>`.
-- [x] Sử dụng phương thức hiện đại `Object.hasOwn(obj, key)` (chuẩn ES2022) an toàn hơn `hasOwnProperty`.
-- [x] Viết trọn bộ 5 test case trong [src/tests/pick.test.ts](file:///d:/PingPulse/src/tests/pick.test.ts) kiểm tra: lọc trường nhạy cảm, nhặt 1 key, mảng key rỗng, bỏ qua thuộc tính kế thừa từ prototype, và tính bất biến (Immutability).
-- [x] Đạt mốc **16/16 tests pass** mượt mà trên Vitest, `npx tsc --noEmit` 0 lỗi.
+### 1. Bản chất của một "Connection" (Kết nối mạng)
+* Một kết nối DB là một đường ống mạng TCP Socket thực thụ. Mở kết nối tốn rất nhiều tài nguyên (bắt tay 3 bước, SSL, xác thực mật khẩu, Postgres tốn 5-10MB RAM/tiến trình con).
+* **Connection Pool (Bể kết nối):** Giống đội xe taxi đậu sẵn. Khởi động server thì mở sẵn 5-10 kết nối, có query thì lấy ra dùng, xong việc trả lại bể. Không mở/đóng liên tục.
 
-### 🚧 Vướng mắc & Bài học
-- Khi hàm chưa có câu lệnh `return result;`, Node.js thực thi sẽ mặc định trả về `undefined`. Cần luôn đảm bảo hàm có return rõ ràng.
-- Hiểu rõ sự khác biệt giữa `pick.js` và `pick.ts` trong việc tận dụng hệ thống type checking của TypeScript.
-- **Thời gian:** Ước lượng 2 giờ | Thực tế: 2.5 giờ.
+### 2. Singleton Pattern (`db.ts`) – Chống nghẽn kết nối
+* Mỗi lần gọi `new PrismaClient()` là tạo ra **1 Bể kết nối mới**.
+* Nếu gọi `new` ở khắp nơi $\rightarrow$ sinh ra hàng chục Bể $\rightarrow$ vượt quá giới hạn cứng của Postgres (`max_connections ~ 100`) $\rightarrow$ Sập database (`P2024` / `FATAL: remaining connection slots`).
+* **Singleton:** Khởi tạo duy nhất 1 lần ở `db.ts`. Cơ chế Module Cache của Node.js đảm bảo mọi nơi `import { prisma }` đều dùng chung 1 đối tượng duy nhất, an toàn tuyệt đối.
+
+### 3. Cơ chế Hàng đợi (Queue) & Connection Timeout
+* Khi có 100 query ùa vào mà bể chỉ có 10 kết nối:
+  * 10 query đầu chiếm 10 kết nối.
+  * 90 query còn lại đứng xếp hàng trong **Hàng đợi (Waiting Queue)**.
+  * Do mỗi query DB có index chạy cực nhanh (1 - 3 mili-giây), 10 kết nối có thể phục vụ 3.000 - 5.000 query/giây. 90 người chờ chỉ mất tích tắc là xong.
+* **Connection Timeout (Chiếc phanh khẩn cấp):** Nếu query bị kẹt quá 10 giây (do không index / deadlock), hệ thống tự ngắt và báo lỗi khách đó, thà hy sinh 1 khách còn hơn để sập toàn bộ Database.
+
+### 4. Database Migration vs Sửa tay
+* **Migration là Git cho Database:** Lưu lịch sử mọi thay đổi cấu trúc bảng dưới dạng file SQL có mốc thời gian.
+* **Tuyệt đối không sửa tay trên Production:** Sửa tay trên máy mình thì Production không có cột mới $\rightarrow$ Sập web. Dùng migration để mọi môi trường đồng bộ 100%.
+
+### 5. Triệt tiêu lỗi hiệu năng N+1 Query
+* **Lỗi N+1:** Lấy 100 website (1 query), sau đó dùng vòng lặp chạy 100 lần để lấy lần check mới nhất của từng web (thêm 100 query). Tổng cộng $1 + 100 = 101$ query làm nghẽn DB.
+* **Cách khắc phục:** Dùng `JOIN` hoặc `LATERAL JOIN` để Database tự xử lý và trả về đúng 1 lần truy vấn duy nhất.
+
+### 6. Bản chất Index & Cây B-Tree (Cơ chế phân tầng & Khối nhớ 8KB)
+* **Không có Index:** Database phải cày cuốc quét từ dòng đầu đến dòng cuối (**`Seq Scan`**), vứt bỏ hàng trăm nghìn dòng rác (`Rows Removed`).
+* **Đơn vị khối nhớ 8KB (Page):** PostgreSQL đọc/ghi đĩa theo từng khối 8KB. Một khối 8KB chứa được ~300 đến 500 con trỏ (gọi là **Hệ số phân nhánh - Fan-out**).
+* **Cấp số nhân của cây B-Tree:** 
+  * Tầng 1 (Gốc): ~300 con trỏ.
+  * Tầng 2 (Nhánh): $300 \times 300 = 90.000$ bản ghi.
+  * Tầng 3 (Lá): $300^3 = 27.000.000$ (**27 triệu bản ghi!**).
+  * 👉 Dù bảng có 100.000 hay 10 triệu dòng, cây B-Tree vẫn chỉ cao **3 tầng**. Bất kỳ lượt tìm kiếm nào cũng chỉ tốn tối đa **3 nhịp đọc** ($O(\log N)$).
+* **Buffer Cache (RAM):** Tầng 1 và 2 rất nhẹ nên Postgres găm luôn vào RAM. Thực tế 3 nhịp tìm kiếm chỉ gồm 2 nhịp đọc RAM + 1 nhịp đọc SSD $\rightarrow$ Truy vấn hoàn thành trong **`0.1 ms`**!
+* **Cơ chế tách trang (Page Split):** Khi một khối 8KB bị đầy, Postgres tự động chẻ đôi thành 2 khối 4KB và đẩy 1 con trỏ lên tầng trên, giữ cây luôn cân bằng tuyệt đối.
+* **Đặc quyền của Khóa chính (`@id`) & `@unique`:** Mọi cột khóa chính hoặc unique đều được Database **tự động tạo sẵn một B-Tree Index ngầm** (ví dụ: `checks_pkey`, `users_email_key`).
+* **Đặc tính sắp xếp (`DESC`):** Giúp ngắt sớm câu lệnh (**Early Exit**). Khi tìm `LIMIT 10`, Postgres chỉ cần bốc 10 bản ghi đầu tiên ở lá cây rồi **dừng ngay lập tức**, không quét phần còn lại (tăng tốc gấp **125 lần**).
+
+### 7. Công thức vàng thiết kế Index (Quy tắc ESR)
+> **"Query có trước, Index theo sau."** Nhìn vào câu SQL hay chạy nhất để bóc tách:
+1. **Cột dùng dấu `=` (Equality):** Luôn đặt **ĐỨNG ĐẦU TIÊN** trong Index (ví dụ: `monitor_id`).
+2. **Cột dùng để `ORDER BY` hoặc so sánh khoảng (`>`, `<`):** Đặt **ĐỨNG THỨ HAI** (ví dụ: `checked_at DESC`).
+* 👉 Ví dụ: `CREATE INDEX idx_checks_monitor_time ON checks (monitor_id, checked_at DESC);`
+* **Quy tắc Trái sang Phải (Leftmost Prefix):** Index `(A, B)` chỉ phát huy tác dụng khi câu lệnh có điều kiện lọc theo cột `A`. Nếu câu lệnh chỉ lọc theo cột `B` mà không có `A`, Index sẽ bị vô hiệu hóa!
+
+### 8. Nghệ thuật đánh đổi (Trade-off) của Index
+* **Index giúp ĐỌC nhanh hơn, nhưng làm GHI (INSERT) chậm đi:** Mỗi lần ghi dữ liệu mới, Postgres phải cập nhật lại toàn bộ các cây Index trên đĩa.
+* **Nguyên tắc:** Chỉ đánh Index cho các câu truy vấn chạy liên tục trên giao diện chính của khách hàng; không đánh index bừa bãi cho các báo cáo nội bộ thỉnh thoảng mới chạy.
+
+### 9. Bản chất bài toán Top-N per Group & Sức mạnh của `LATERAL JOIN`
+* **Bài toán:** Lấy đúng 1 check mới nhất cho mỗi monitor trong danh sách (ít "cha", nhiều "con").
+* **Vì sao `LATERAL JOIN` tối ưu ở quy mô này?** 
+  * Nó thực hiện đúng bản chất: Với mỗi monitor (100 cha), nhảy vào cây Index bốc đúng 1 dòng mới nhất trên đỉnh (100 lần tra index siêu nhanh), hoàn toàn không phải quét 500.000 dòng.
+* **Tư duy tỉnh táo về số liệu:** Các con số đo đạc phụ thuộc vào phần cứng, bộ nhớ đệm (Cache) và quy mô dữ liệu. Không nhớ số liệu như hằng số tuyệt đối, điều cốt lõi là hiểu: **Cách viết query quyết định việc Database có tận dụng được Index hay không**.
+
+### 10. Phân vai chuẩn mực: Khi nào dùng Prisma vs SQL thuần?
+* **CRUD hàng ngày (Thêm, sửa, xóa đơn giản):** Dùng **PRISMA** (Code nhanh, Type-safe an toàn, không sợ gõ sai tên cột).
+* **Báo cáo, Thống kê, Dữ liệu lớn (`LATERAL JOIN`, `generate_series`, `date_trunc`, `COUNT(*) FILTER`):** Dùng **SQL THUẦN** (Tối ưu từng mili-giây, không bị ORM cản trở, tránh kéo hàng vạn dòng về RAM server).
+
+### 11. Phân vai công cụ: Prisma Migration vs DBeaver / pgAdmin
+* **Đụng đến CẤU TRÚC (Schema: tạo bảng, thêm cột, tạo Index):** Bắt buộc làm qua **PRISMA** (`schema.prisma` $\rightarrow$ `prisma migrate dev`) để lưu lịch sử Git cho Production.
+* **Thử nghiệm, đo hiệu năng, viết câu query:** Cứ **DBeaver / pgAdmin** mà thử nghiệm trực tiếp (nhanh, trực quan, không làm bẩn code dự án).
 
 ---
 
-## 📅 2026-11-06 (Sprint 1 - Ngày 5: Bứt phá hoàn thành trọn bộ 10 Hàm, Result & Error Handling)
+## 📄 PHẦN 3: CHIẾN LƯỢC PHÂN TRANG (PAGINATION) Ở QUY MÔ LỚN
 
-### 🎯 Đã hoàn thành
-- [x] **Hàm `omit` ([src/utils/omit.ts](file:///d:/PingPulse/src/utils/omit.ts)):** Lọc bỏ các trường nhạy cảm, áp dụng shallow copy `{ ...obj }` đảm bảo Immutability (5 tests).
-- [x] **Hàm `sleep` ([src/utils/sleep.ts](file:///d:/PingPulse/src/utils/sleep.ts)):** Tạm dừng luồng code bằng `Promise<void>`, kiểm thử với Vitest Fake Timers (4 tests).
-- [x] **Hàm `unique` ([src/utils/unique.ts](file:///d:/PingPulse/src/utils/unique.ts)):** Khử trùng lặp mảng dùng `[...new Set(arr)]` với độ phức tạp tối ưu (7 tests).
-- [x] **Hàm `compact` ([src/utils/compact.ts](file:///d:/PingPulse/src/utils/compact.ts)):** Lọc sạch falsy values với Type Guard `item is NonNullable<T>` (7 tests).
-- [x] **Hàm `safeJsonParse` ([src/utils/safeJsonParse.ts](file:///d:/PingPulse/src/utils/safeJsonParse.ts)):** Hỗ trợ 2 chế độ:
-  - Chế độ Discriminated Union trả về `Result<T, Error>` ([src/types/result.ts](file:///d:/PingPulse/src/types/result.ts)) khi parse không fallback.
-  - Chế độ Fallback an toàn chống sập server khi gặp chuỗi lỗi HTML 502 (8 tests).
-- [x] **Hàm `retry` ([src/utils/retry.ts](file:///d:/PingPulse/src/utils/retry.ts)):** Tự động thử lại hàm async khi gặp lỗi mạng, tận dụng hàm `sleep` mà không cần gọi `setTimeout` hay `Promise` thủ công (5 tests).
-- [x] **Hàm `debounce` ([src/utils/debounce.ts](file:///d:/PingPulse/src/utils/debounce.ts)):** Chống bão thông báo / gõ phím, hỗ trợ phương thức `cancel()`, kiểm tra kiểu nghiêm ngặt bằng `@ts-expect-error` (5 tests).
-- [x] **Class `AppError` & Hàm `handleError` ([src/errors/AppError.ts](file:///d:/PingPulse/src/errors/AppError.ts)):** Quản lý lỗi tập trung an toàn, phân loại `AppError` (có `statusCode`) và lỗi hệ thống `unknown` (5 tests).
-- [x] **Cán mốc 62 / 62 tests pass** trên 11 test suites của Vitest, `npx tsc --noEmit` hoàn toàn sạch lỗi, **0% sử dụng `any`**.
+### 1. Offset Pagination (`LIMIT :limit OFFSET :offset`)
+* **Bản chất:** Hình tượng "Lật từng trang sách". Muốn xem trang thứ 1.000 (`OFFSET 20000 LIMIT 20`), Database buộc phải duyệt qua 20.000 dòng đầu rồi vứt đi, sau đó mới lấy 20 dòng tiếp theo.
+* **Nhược điểm:** Càng sang trang sâu càng chậm ($O(N)$). Dễ bị **nhảy dòng / trùng lặp** khi có bản ghi mới chèn vào đầu bảng trong lúc người dùng đang lật trang.
+* **Ứng dụng:** Thích hợp cho các bảng nhỏ (ví dụ bảng `monitors` của 1 user $\le 50$ dòng), cần thanh số trang `[1] [2] [3]...` để nhảy cóc.
 
-### 🚧 Vướng mắc & Bài học
-- **Vòng đời Git:** Nắm vững quy trình `git add` (đưa vào Staging) $\rightarrow$ `git commit` (tạo gói) $\rightarrow$ `git push` (đẩy lên remote).
-- **Discriminated Union (`Result<T, E>`):** Hiểu cách TypeScript tự động thu hẹp kiểu dựa vào cờ `res.ok` (khi `ok === true` truy cập `res.data`, khi `ok === false` truy cập `res.error`).
-- **Xử lý bất đồng bộ:** Nhận ra `retry` thực chất chỉ là vòng lặp `for` và `try/catch`, khi đã có `sleep` thì không cần viết lại `Promise` phức tạp.
-- **Thời gian:** Ước lượng 4 giờ | Thực tế: 4.5 giờ.
+### 2. Cursor Pagination (`WHERE id < :cursor ORDER BY id DESC LIMIT :limit`)
+* **Bản chất:** Hình tượng "Chiếc thẻ kẹp sách (Bookmark)". Khi đọc xong trang trước, lưu lại `id` của bản ghi cuối cùng (`cursor`). Lần sau chỉ cần bảo DB: *"Lấy cho tôi 20 dòng ngay sau chiếc bookmark này"*.
+* **Ưu điểm vượt trội:**
+  * Nhờ B-Tree Index trên `id`, Database nhảy thẳng (Index Seek) tới vị trí bookmark.
+  * Tốc độ ở trang 1 hay trang 10.000 đều như nhau (**$O(1)$ ~ 0.1ms**).
+  * Không bao giờ bị trùng hoặc sót dữ liệu dù có hàng triệu dòng mới được chèn vào đầu bảng.
+* **Kỹ thuật lấy dư 1 dòng (`take: limit + 1`):**
+  * Client xin 20 dòng $\rightarrow$ Query lấy 21 dòng.
+  * Nếu kết quả $> 20$: Chắc chắn **còn trang sau** (`hasNextPage = true`), lấy `id` của dòng 20 làm `nextCursor`, cắt bỏ dòng 21.
+  * Triệt tiêu hoàn toàn nhu cầu chạy câu lệnh `COUNT(*)` đắt đỏ trên bảng 500.000 dòng.
+* **Ứng dụng:** Bắt buộc cho bảng dữ liệu khổng lồ (bảng `checks`, News Feed, Tin nhắn, Logs) với trải nghiệm Infinite Scroll / Nút "Xem thêm".
 
 ---
 
-## 🏆 RETROSPECTIVE: TỔNG KẾT SPRINT 1 (PingPulse Level 1a - Core Utilities)
+## 🏛️ PHẦN 4: THIẾT KẾ RESTFUL RESOURCE & BẢO MẬT BACKEND
 
-### 📊 Thống kê Sprint 1
-- **Tổng số hàm tiện ích:** 10/10 hàm (`chunk`, `groupBy`, `pick`, `omit`, `unique`, `compact`, `sleep`, `debounce`, `retry`, `safeJsonParse`).
-- **Tổng số bài Unit Test:** 62 tests pass (100% xanh trên Vitest).
-- **Chất lượng mã nguồn:** Tuân thủ TypeScript Strict mode, 0 lỗi biên dịch, không sử dụng `any`.
-- **Tổng thời gian thực tế vs Ước lượng:**
-  - Tổng ước lượng: 12.5 giờ
-  - Tổng thực tế: 14.5 giờ (Chênh lệch ~2 giờ do làm quen với Vitest và TypeScript Generic nâng cao, nhưng hoàn toàn xứng đáng).
+### 1. Nguyên tắc tách biệt Resource Cha - Con (Monitors & Checks)
+* **Không nhét lịch sử checks vào API Detail:** Bảng checks có thể lên tới 50.000 dòng/monitor. Nếu kéo toàn bộ checks vào `getDetailMonitor`, server sẽ bị cạn kiệt RAM và truyền thừa dữ liệu mỗi khi người dùng bấm "Xem thêm".
+* **Bộ ba API chuẩn mực:**
+  1. `GET /api/monitors/:id`: Trả về thông tin cấu hình Monitor (Tên, URL, tần suất, trạng thái). Gọi 1 lần khi vào trang.
+  2. `GET /api/monitors/:id/stats`: Trả về Uptime % và Latency trung bình (24h & 7d). Tính toán bằng Raw SQL Aggregate siêu tốc trong 1-2ms nhờ Composite Index.
+  3. `GET /api/monitors/:id/checks`: Danh sách lịch sử checks có phân trang Cursor. Mỗi lần bấm "Xem thêm" chỉ gọi duy nhất endpoint này.
 
-### 💡 Điểm mạnh đã đạt được
-1. Nắm vững tư duy Bất biến (Immutability) và Lập trình phòng thủ (Defensive Programming).
-2. Tác phong làm việc chuẩn mực: Mỗi chức năng một nhánh, có unit test đi kèm và nhật ký devlog ghi chép hàng ngày.
-3. Vượt qua nỗi sợ `Promise` / `async-await` và làm chủ các kỹ thuật nâng cao như Discriminated Union, Type Guard.
+### 2. Xác thực (Authentication) & Phân quyền (Authorization)
+* **Lấy danh sách (`getMonitors`):** Tự động lọc bằng `WHERE user_id = ${userId}` (lấy từ JWT token). Người dùng không thể thấy tài nguyên của người khác.
+* **Thao tác theo ID (`getDetail`, `checks`, `delete`):** Bắt buộc chạy hàm `findOwnedMonitor` để chặn trường hợp User A cố tình gõ ID của User B (ném lỗi `403 Forbidden`).
+* **Bảo vệ nhiều lớp (Defense in Depth):**
+  * **Network Isolation:** Cổng Database (5432) chỉ mở cho mạng nội bộ (Private Subnet), không bao giờ mở ra Internet.
+  * **Parameterized Queries:** Prisma ORM và Tagged Template (`prisma.$queryRaw`) tự động biến dữ liệu đầu vào thành tham số thuần túy, triệt tiêu hoàn toàn lỗ hổng **SQL Injection**.
 
-### 🚀 Kế hoạch Sprint 2
-- Bắt đầu bước vào tầng **Core Checker Engine** của PingPulse: Xây dựng module ping website thực tế (HTTP/HTTPS, TCP), tính toán latency và tích hợp các hàm utils (`retry`, `timeout`, `chunk`) vào luồng nghiệp vụ.
+### 3. Luật nghiệp vụ: Backend API vs Database Constraints
+* Giới hạn "Tối đa 5 monitor" được chặn ở tầng Ứng dụng (API Express).
+* Khi Seed dữ liệu kiểm thử tải lớn, câu lệnh SQL đi thẳng vào Database (Bypass API) nên có thể nạp 100 monitors mà không bị chặn.
+* Nếu muốn chặn cứng cả ở tầng Database: Dùng **PostgreSQL Trigger** (`BEFORE INSERT`).
+
+### 4. Bản chất Băm mật khẩu (Bcrypt Hashing)
+* **Băm (Hashing) vs Mã hóa (Encryption):**
+  * Mã hóa là 2 chiều (có chìa khóa là giải mã ngược lại được).
+  * Băm là **hàm toán học 1 chiều (One-way function)**: Giống máy xay sinh tố, thành ly sinh tố rồi thì không thể biến ngược lại thành quả hoa quả ban đầu.
+* **Cơ chế so khớp (`bcrypt.compare`):** Khi đăng nhập, server không dịch ngược hash trong DB, mà lấy mật khẩu người dùng vừa gõ đem đi băm tiếp, rồi so sánh xem 2 chuỗi hash có giống nhau không.
+* **Muối (Salt) & Cost Factor:** Trộn chuỗi ngẫu nhiên để chống bảng tra Rainbow Table, và làm chậm CPU (~100ms) để chống tấn công dò mật khẩu (Brute-force).
+
+### 5. Production Hardening: Helmet & High-Performance Logging (Pino)
+* **Helmet:** Tự động tiêm 11 HTTP Security Headers chuẩn OWASP, loại bỏ header `X-Powered-By: Express` để che giấu công nghệ máy chủ, ngăn chặn clickjacking và MIME-sniffing.
+* **Pino vs Morgan/Winston:**
+  * Morgan xuất text thô $\rightarrow$ Khó cho các công cụ giám sát log tự động (ELK / Loki / Datadog) truy vấn.
+  * Pino ghi log dạng **Structured JSON**, xử lý bất đồng bộ siêu tốc (nhanh gấp 5 lần Morgan/Winston).
+  * Trong môi trường Dev: Kết hợp `pino-pretty` để format log có màu sắc và thời gian rõ ràng; khi lên Production: Tự động xuất JSON chuẩn để giám sát.
+
+---
+
+## 🌐 PHẦN 5: MỞ RỘNG KIẾN TRÚC HỆ THỐNG LỚN (SYSTEM DESIGN)
+
+Khi lượng người dùng lên tới hàng trăm nghìn hoặc hàng triệu:
+1. **Caching với Redis:** Lưu dữ liệu đọc nhiều (80% lượt xem) trên RAM. Trả lời ngay lập tức mà không cần chạm vào Database.
+2. **Read Replicas (Nhân bản DB):** Tách thành 1 máy chủ Master chuyên Ghi (Insert/Update) và 3-5 máy chủ Slaves chuyên Đọc (Select).
+3. **PgBouncer (Bến xe trung tâm):** Đứng giữa Backend và Postgres, gom hàng nghìn kết nối từ backend thành vài chục kết nối tinh gọn tới DB.
+
+---
+
+## 💻 PHẦN 6: FRONTEND INTEGRATION & HYDRATION
+
+1. **Next.js App Router (SSR vs Client Component):**
+   * Mặc định component chạy trên Server để tối ưu SEO và tải trang nhanh.
+   * Những trang cần tương tác người dùng (`useState`, `useEffect`, `localStorage`) phải khai báo `'use client'`.
+2. **Lỗi Cascading Renders:**
+   * Không gọi `setState` đồng bộ ngay đầu `useEffect`.
+   * Gói vào hàm `async fetchData()` để cập nhật state sau khi dữ liệu mạng đã sẵn sàng, kèm cờ `isMounted` để tránh rò rỉ bộ nhớ khi người dùng chuyển trang nhanh.
+3. **URL State vs In-Page State:**
+   * Dùng `useState` cho Modal/Popup và phân trang nội bộ để chuyển cảnh tức thì không giật URL.
+   * Dùng URL Query Params (`?page=2`) khi cần chia sẻ đường dẫn trực tiếp (Sharable Link).

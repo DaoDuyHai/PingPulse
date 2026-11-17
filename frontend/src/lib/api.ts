@@ -21,6 +21,32 @@ export interface MonitorItem {
   checks: CheckRecord[];
 }
 
+export interface PaginationInfo {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface MonitorStats {
+  monitor_id: number;
+  stats_24h: {
+    total_checks: number;
+    uptime_pct: number | null;
+    avg_latency_ms: number | null;
+  };
+  stats_7d: {
+    total_checks: number;
+    uptime_pct: number | null;
+    avg_latency_ms: number | null;
+  };
+}
+
+export interface CursorPaginationInfo {
+  nextCursor: number | null;
+  hasNextPage: boolean;
+}
+
 export interface UserProfile {
   username: string;
   email: string;
@@ -78,8 +104,43 @@ export const api = {
   },
 
   // 2. Monitors
-  async getMonitors(token: string) {
-    return request<{ message: string; data: MonitorItem[] }>('/monitors', {
+  async getMonitors(token: string, page = 1, limit = 10) {
+    return request<{
+      message: string;
+      data: {
+        items: MonitorItem[];
+        pagination: PaginationInfo;
+      };
+    }>(`/monitors?page=${page}&limit=${limit}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+
+  async getMonitorChecks(
+    token: string,
+    monitorId: number,
+    cursor?: number,
+    limit = 20
+  ) {
+    const url = cursor
+      ? `/monitors/${monitorId}/checks?cursor=${cursor}&limit=${limit}`
+      : `/monitors/${monitorId}/checks?limit=${limit}`;
+    return request<{
+      message: string;
+      data: {
+        items: CheckRecord[];
+        pagination: CursorPaginationInfo;
+      };
+    }>(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+
+  async getMonitorStats(token: string, monitorId: number) {
+    return request<{
+      message: string;
+      data: MonitorStats;
+    }>(`/monitors/${monitorId}/stats`, {
       headers: { Authorization: `Bearer ${token}` },
     });
   },

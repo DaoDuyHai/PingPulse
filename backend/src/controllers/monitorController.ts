@@ -148,65 +148,95 @@ export const createMonitor = async (req: Request, res: Response) => {
   });
 };
 
-interface LatestCheckRow {
-  id: bigint;
-  monitor_id: number;
-  is_up: boolean;
+interface MonitorWithLatestCheckRow {
+  id: number;
+  name: string;
+  url: string;
+  interval_sec: number;
+  status: string;
+  created_at: Date;
+  check_id: bigint | null;
+  is_up: boolean | null;
   status_code: number | null;
   latency_ms: number | null;
   error: string | null;
-  checked_at: Date;
+  checked_at: Date | null;
 }
 
 export const getMonitors = async (req: Request, res: Response) => {
   const userId = getUserId(req);
 
-  // Query 1: Lay danh sach monitor cua user
-  const monitors = await prisma.monitors.findMany({
-    where: { user_id: userId },
-    orderBy: { created_at: 'desc' },
-    select: {
-      id: true,
-      name: true,
-      url: true,
-      interval_sec: true,
-      status: true,
-      created_at: true,
-    },
-  });
+  const page = Math.max(1, Number(req.query.page) || 1);
 
-  if (monitors.length === 0) {
-    return res.status(200).json({
-      message: 'Da lay thanh cong danh sach monitor',
-      data: [],
-    });
-  }
+  const limit = Math.max(1, Math.min(50, Number(req.query.limit)) || 10);
 
-  // Query 2: Loc dung 1 ban ghi check moi nhat cho moi monitor ngay tai PostgreSQL
-  const monitorIds = monitors.map((m) => m.id);
-  const latestChecks = await prisma.$queryRaw<LatestCheckRow[]>`
-    SELECT DISTINCT ON (monitor_id)
-      id, monitor_id, is_up, status_code, latency_ms, error, checked_at
-    FROM checks
-    WHERE monitor_id IN (${Prisma.join(monitorIds)})
-    ORDER BY monitor_id, checked_at DESC
+  const offset = (page - 1) * limit;
+
+  // 1 câu SQL duy nhất dùng LATERAL JOIN kết hợp Composite Index (Tối ưu Max Ping)
+  const rows = await prisma.$queryRaw<MonitorWithLatestCheckRow[]>`
+    SELECT 
+      m.id,
+      m.name,
+      m.url,
+      m.interval_sec,
+      m.status,
+      m.created_at,
+      c.id AS check_id,
+      c.is_up,
+      c.status_code,
+      c.latency_ms,
+      c.error,
+      c.checked_at
+    FROM monitors m
+    LEFT JOIN LATERAL (
+      SELECT id, is_up, status_code, latency_ms, error, checked_at
+      FROM checks
+      WHERE monitor_id = m.id
+      ORDER BY checked_at DESC
+      LIMIT 1
+    ) c ON true
+    WHERE m.user_id = ${userId}
+    ORDER BY m.created_at DESC
+    LIMIT ${limit} OFFSET ${offset};
   `;
 
-  const checkByMonitorId = new Map(
-    latestChecks.map((check) => [check.monitor_id, serializeCheck(check)])
-  );
+  const data = rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    url: row.url,
+    interval_sec: row.interval_sec,
+    status: row.status,
+    created_at: row.created_at,
+    checks: row.check_id
+      ? [
+          {
+            id: Number(row.check_id),
+            monitor_id: row.id,
+            is_up: Boolean(row.is_up),
+            status_code: row.status_code,
+            latency_ms: row.latency_ms,
+            error: row.error,
+            checked_at: row.checked_at,
+          },
+        ]
+      : [],
+  }));
 
-  const data = monitors.map((monitor) => {
-    const latestCheck = checkByMonitorId.get(monitor.id);
-    return {
-      ...monitor,
-      checks: latestCheck ? [latestCheck] : [],
-    };
+  const total = await prisma.monitors.count({
+    where: { user_id: userId },
   });
 
   return res.status(200).json({
     message: 'Da lay thanh cong danh sach monitor',
-    data,
+    data: {
+      items: data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    },
   });
 };
 
@@ -214,31 +244,114 @@ export const getDetailMonitor = async (req: Request, res: Response) => {
   const userId = getUserId(req);
   const monitorId = parseMonitorId(req.params.id);
 
+  const monitor = await findOwnedMonitor(monitorId, userId);
+
+  return res.status(200).json({
+    message: 'Da lay chi tiet thong tin monitor',
+    data: monitor,
+  });
+};
+
+export const getMonitorChecks = async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  const monitorId = parseMonitorId(req.params.id);
   await findOwnedMonitor(monitorId, userId);
 
-  const detailMonitor = await prisma.monitors.findUnique({
-    where: { id: monitorId },
-    select: {
-      id: true,
-      name: true,
-      url: true,
-      interval_sec: true,
-      status: true,
-      created_at: true,
-      checks: {
-        orderBy: { checked_at: 'desc' },
+  const limit = Math.max(1, Math.min(100, Number(req.query.limit) || 20));
+
+  const cursor = req.query.cursor ? Number(req.query.cursor) : undefined;
+
+  const checks = await prisma.checks.findMany({
+    where: { monitor_id: monitorId },
+    take: limit + 1,
+    orderBy: { id: 'desc' },
+    ...(cursor
+      ? {
+          cursor: { id: BigInt(cursor) },
+          skip: 1,
+        }
+      : {}),
+  });
+
+    // Nếu số dòng DB trả về > limit (tức là trả về đủ 21 dòng) => Vẫn CÒN trang sau
+  const hasNextPage = checks.length > limit;
+
+  // Nếu có trang sau, ta cắt bỏ dòng thứ 21 đó đi để trả về đúng 20 dòng cho client
+  const items = hasNextPage ? checks.slice(0, limit) : checks;
+
+  const lastItem = items[items.length - 1];
+  const nextCursor = hasNextPage && lastItem ? Number(lastItem.id) : null;
+
+  return res.status(200).json({
+    message: 'Da lay danh sach checks thanh cong',
+    data: {
+      items: items.map(serializeCheck),
+      pagination: {
+        nextCursor,
+        hasNextPage,
       },
     },
   });
+};
+
+interface MonitorStatsRow {
+  total_checks_24h: bigint;
+  uptime_pct_24h: Prisma.Decimal | number | string | null;
+  avg_latency_ms_24h: Prisma.Decimal | number | string | null;
+  total_checks_7d: bigint;
+  uptime_pct_7d: Prisma.Decimal | number | string | null;
+  avg_latency_ms_7d: Prisma.Decimal | number | string | null;
+}
+
+export const getMonitorStats = async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  const monitorId = parseMonitorId(req.params.id);
+
+  await findOwnedMonitor(monitorId, userId);
+
+  const rows = await prisma.$queryRaw<MonitorStatsRow[]>`
+    SELECT
+      COUNT(*) FILTER (WHERE checked_at >= NOW() - INTERVAL '24 hours') AS total_checks_24h,
+      ROUND(
+        COUNT(*) FILTER (WHERE checked_at >= NOW() - INTERVAL '24 hours' AND is_up) * 100.0 /
+        NULLIF(COUNT(*) FILTER (WHERE checked_at >= NOW() - INTERVAL '24 hours'), 0),
+        2
+      ) AS uptime_pct_24h,
+      ROUND(
+        AVG(latency_ms) FILTER (WHERE checked_at >= NOW() - INTERVAL '24 hours' AND is_up)
+      ) AS avg_latency_ms_24h,
+
+      COUNT(*) AS total_checks_7d,
+      ROUND(
+        COUNT(*) FILTER (WHERE is_up) * 100.0 /
+        NULLIF(COUNT(*), 0),
+        2
+      ) AS uptime_pct_7d,
+      ROUND(
+        AVG(latency_ms) FILTER (WHERE is_up)
+      ) AS avg_latency_ms_7d
+    FROM checks
+    WHERE monitor_id = ${monitorId}
+      AND checked_at >= NOW() - INTERVAL '7 days';
+  `;
+
+  const row = rows[0];
 
   return res.status(200).json({
-    message: 'Da lay chi tiet thong tin va lich su check cua monitor',
-    data: detailMonitor
-      ? {
-          ...detailMonitor,
-          checks: detailMonitor.checks.map(serializeCheck),
-        }
-      : null,
+    message: 'Da lay thong ke monitor thanh cong',
+    data: {
+      monitor_id: monitorId,
+      stats_24h: {
+        total_checks: Number(row?.total_checks_24h ?? 0),
+        uptime_pct: row?.uptime_pct_24h != null ? Number(row.uptime_pct_24h) : null,
+        avg_latency_ms: row?.avg_latency_ms_24h != null ? Number(row.avg_latency_ms_24h) : null,
+      },
+      stats_7d: {
+        total_checks: Number(row?.total_checks_7d ?? 0),
+        uptime_pct: row?.uptime_pct_7d != null ? Number(row.uptime_pct_7d) : null,
+        avg_latency_ms: row?.avg_latency_ms_7d != null ? Number(row.avg_latency_ms_7d) : null,
+      },
+    },
   });
 };
 
