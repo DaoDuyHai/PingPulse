@@ -24,6 +24,7 @@ model monitors {
   user_id      Int
   name         String
   url          String
+  slug         String?  @unique
   interval_sec Int      @default(60)
   status       String   @default("unknown")
   created_at   DateTime @default(now()) @db.Timestamptz(6)

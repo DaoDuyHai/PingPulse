@@ -252,3 +252,64 @@ Khi lượng người dùng lên tới hàng trăm nghìn hoặc hàng triệu:
   * Nhúng trực tiếp instance `app` của Express vào bộ nhớ RAM.
   * Bắn HTTP request mô phỏng người dùng thật (Đăng ký $\rightarrow$ Đăng nhập lấy JWT $\rightarrow$ Tạo Monitor $\rightarrow$ Check Now) mà không cần bật server mở port mạng thật.
   * Tự động dọn dẹp Database sau khi test (`afterAll`) để các lần chạy test luôn độc lập và lặp lại được 100%.
+
+---
+
+## ⚡ PHẦN 9: REDIS - IN-MEMORY DATABASE, CACHE-ASIDE PATTERN & TỐI ƯU HIỆU NĂNG HỆ THỐNG
+
+### 1. Bản chất In-Memory: Vì sao Redis nhanh hơn PostgreSQL hàng trăm lần?
+* **RAM (Nano-giây) vs Ổ cứng SSD (Micro-giây):**
+  * PostgreSQL là cơ sở dữ liệu bền vững (Persistent RDBMS), dữ liệu phải ghi xuống ổ đĩa vật lý để không mất khi mất điện. Tốc độ đọc ghi của SSD tính bằng Micro-giây ($\mu s$).
+  * Redis lưu toàn bộ dữ liệu trên thanh **RAM (In-Memory)**. Tốc độ truy xuất của RAM tính bằng Nano-giây ($ns$), nhanh hơn SSD gấp hàng nghìn lần (đáp ứng < 0.5ms).
+* **Kiến trúc Single-Threaded Event Loop (Đơn luồng):**
+  * Không tốn chi phí tranh chấp khóa (Lock Contention) hay chuyển ngữ cảnh luồng (Context Switching) như các hệ thống đa luồng phức tạp.
+  * Được viết bằng ngôn ngữ C thuần túy, thao tác bộ nhớ trực tiếp đến từng byte.
+* **5 Câu lệnh nền tảng của Redis:**
+  * `SET key value`: Lưu cặp khóa - giá trị.
+  * `GET key`: Lấy giá trị của khóa.
+  * `EXPIRE key seconds`: Thiết lập thời gian sống (TTL).
+  * `TTL key`: Kiểm tra số giây còn lại trước khi khóa tự hủy (`-1`: vĩnh viễn, `-2`: không tồn tại).
+  * `INCR key`: Tăng biến đếm nguyên tử (Atomic increment), nền tảng của Rate Limiting.
+
+### 2. Tư duy Lưu trữ Key-Value & Xử lý kiểu dữ liệu trong Redis
+* **Quy ước đặt tên Key:**
+  * Sử dụng dấu hai chấm `:` để phân cấp namespace rõ ràng: `status:<slug>`, `rl:<ip>`, `user:<id>:tokens`.
+* **Value trong Redis là Binary-safe String:**
+  * Kiểu nguyên thủy (số, chuỗi ngắn): Có thể lưu chuỗi trần.
+  * Kiểu đối tượng phức tạp (JSON Object/Array): Cần `JSON.stringify()` khi lưu và `JSON.parse()` khi đọc ra.
+* **Bẫy `BigInt` khi tuần tự hóa JSON (Serialization Trap):**
+  * Prisma trả về các cột khóa chính dạng `BigInt` (ví dụ `checks.id`).
+  * Hàm `JSON.stringify()` mặc định của JavaScript sẽ ném lỗi runtime: `TypeError: Do not know how to serialize a BigInt`.
+  * **Giải pháp:** Viết bước sanitize chuyển đổi `BigInt` thành `String` hoặc `Number` trước khi đẩy vào Redis và trả về Client.
+
+### 3. Mô hình Cache-Aside Pattern (Lazy Loading) cho Public Status Page
+* **Nguyên lý hoạt động:**
+  1. Client gửi request `GET /api/status/:slug`.
+  2. Server kiểm tra Redis với key `status:${slug}`.
+  3. **Cache Hit (Trúng thưởng):** Tìm thấy trong Redis $\rightarrow$ Trả về ngay lập tức với `source: 'cache'` (thời gian xử lý < 0.5ms, giải phóng 100% tải cho DB).
+  4. **Cache Miss (Trượt):** Chưa có trong Redis $\rightarrow$ Truy vấn PostgreSQL $\rightarrow$ Ghi đè vào Redis kèm hạn sử dụng `EX 30` $\rightarrow$ Trả về cho Client với `source: 'db'`.
+* **Tuyệt kỹ tận dụng 3 tầng Index lồng nhau:**
+  * Câu truy vấn `findUnique({ where: { slug } })` ăn ngay **Unique Index** của cột `slug`.
+  * Câu truy vấn lồng `checks` (`take: 10, orderBy: { checked_at: 'desc' }`) ăn trọn **Composite Index `[monitor_id, checked_at DESC]`**.
+  * Câu truy vấn lồng `incidents` (`take: 5, orderBy: { started_at: 'desc' }`) ăn trọn **Composite Index `[monitor_id, started_at DESC]`**.
+
+### 4. Tại sao lại là TTL = 30 giây? (Con số "Vàng" cho Status Page)
+1. **Khớp với tần suất kiểm tra (Monitor Interval):** Các worker thường ping website mỗi 30s - 60s/lần. Trạng thái trong DB không thay đổi nhanh hơn 30s nên cache ngắn hơn sẽ lãng phí tài nguyên DB.
+2. **Tấm khiên đỡ "Bão F5" khi sập mạng (Thundering Herd):** Khi website sập, hàng chục nghìn người dùng hoảng loạn bấm F5 liên tục. Nhờ TTL 30s, PostgreSQL chỉ phải gánh đúng 1 câu truy vấn, 9.999 request còn lại do Redis phục vụ từ RAM.
+3. **Phao cứu sinh chống tràn RAM:** Sau 30s không ai truy cập, Redis tự động giải phóng bộ nhớ, không bao giờ để rác tồn đọng làm sập máy chủ vì cạn RAM (OOM - Out of Memory).
+
+### 5. Hiện tượng Dữ liệu lỗi thời (Stale Data) & Bài toán Cache Invalidation
+* **Điểm yếu của Cache thuần TTL:**
+  * Nếu giây 0 nạp cache báo "UP", đến giây 5 web bị sập ("DOWN").
+  * Từ giây 6 đến 29, nếu khách hàng vào xem thì Redis vẫn tuồn dữ liệu cũ báo "UP" $\rightarrow$ Đây là hiện tượng **Stale Data** (Dữ liệu bị thiu)!
+* **Giải pháp: Cache Invalidation (Xóa cache chủ động):**
+  * Không ngồi chờ hết 30s một cách thụ động.
+  * Hễ có hành động làm biến động dữ liệu trong DB (Admin bấm `Check Now`, hoặc Sửa thông tin, Xóa monitor), server lập tức bắn phát súng tiêu diệt cache:
+    `await redis.del('status:' + monitor.slug);`
+  * Ngay giây kế tiếp người dùng truy cập, Redis bắt buộc phải lấy dữ liệu mới nhất từ PostgreSQL $\rightarrow$ **Độ trễ bằng 0 giây, dữ liệu luôn tươi mới 100%!**
+
+### 6. Khởi động hệ thống an toàn: Eager Connection vs Lazy Connection
+* Prisma mặc định sử dụng cơ chế **Lazy Connection** (chỉ mở socket kết nối khi có câu truy vấn đầu tiên phát sinh). Điều này khiến lập trình viên khó phát hiện nếu DB bị chết cổng từ lúc bật server.
+* **Nâng cấp Startup Health Check:**
+  * Bổ sung `await prisma.$connect()` và `await redis.ping()` ngay trước khi `app.listen()`.
+  * Nếu PostgreSQL (port 5433) hoặc Redis (port 6379) chưa sẵn sàng $\rightarrow$ Server chủ động từ chối khởi động và báo lỗi tức thì, tránh lỗi âm thầm khi đang chạy production.
