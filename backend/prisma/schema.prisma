@@ -28,6 +28,7 @@ model monitors {
   status       String   @default("unknown")
   created_at   DateTime @default(now()) @db.Timestamptz(6)
   checks       checks[]
+  incidents    incidents[]
   users        users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
 }
 
@@ -38,4 +39,16 @@ model users {
   password_hash String
   created_at    DateTime   @default(now()) @db.Timestamptz(6)
   monitors      monitors[]
+}
+
+
+model incidents {
+  id          Int       @id @default(autoincrement())
+  monitor_id  Int
+  started_at  DateTime  @default(now()) @db.Timestamptz(6)
+  resolved_at DateTime? @db.Timestamptz(6)
+  cause       String?
+  monitors    monitors  @relation(fields: [monitor_id], references: [id], onDelete: Cascade)
+
+  @@index([monitor_id, started_at(sort: Desc)], name: "idx_incidents_monitor_time")
 }

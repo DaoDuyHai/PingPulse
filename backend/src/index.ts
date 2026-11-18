@@ -28,6 +28,6 @@ export default app;
 
 if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => {
-    logger.info(`PingPulse Server đang chạy tại port ${PORT}`);
+    logger.info(`PingPulse Server dang chay tai port ${PORT}`);
   });
 }

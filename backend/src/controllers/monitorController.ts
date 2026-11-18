@@ -3,6 +3,7 @@ import { type Request, type Response } from 'express';
 import { prisma } from '../config/db.js';
 import { checkUrl } from '../checker/checkUrl.js';
 import { createHttpError } from '../utils/httpError.js';
+import { decideIncident } from '../incident/decideIncident.js';
 
 const MAX_MONITORS_PER_USER = 5;
 
@@ -273,7 +274,7 @@ export const getMonitorChecks = async (req: Request, res: Response) => {
       : {}),
   });
 
-    // Nếu số dòng DB trả về > limit (tức là trả về đủ 21 dòng) => Vẫn CÒN trang sau
+  // Nếu số dòng DB trả về > limit (tức là trả về đủ 21 dòng) => Vẫn CÒN trang sau
   const hasNextPage = checks.length > limit;
 
   // Nếu có trang sau, ta cắt bỏ dòng thứ 21 đó đi để trả về đúng 20 dòng cho client
@@ -343,13 +344,19 @@ export const getMonitorStats = async (req: Request, res: Response) => {
       monitor_id: monitorId,
       stats_24h: {
         total_checks: Number(row?.total_checks_24h ?? 0),
-        uptime_pct: row?.uptime_pct_24h != null ? Number(row.uptime_pct_24h) : null,
-        avg_latency_ms: row?.avg_latency_ms_24h != null ? Number(row.avg_latency_ms_24h) : null,
+        uptime_pct:
+          row?.uptime_pct_24h != null ? Number(row.uptime_pct_24h) : null,
+        avg_latency_ms:
+          row?.avg_latency_ms_24h != null
+            ? Number(row.avg_latency_ms_24h)
+            : null,
       },
       stats_7d: {
         total_checks: Number(row?.total_checks_7d ?? 0),
-        uptime_pct: row?.uptime_pct_7d != null ? Number(row.uptime_pct_7d) : null,
-        avg_latency_ms: row?.avg_latency_ms_7d != null ? Number(row.avg_latency_ms_7d) : null,
+        uptime_pct:
+          row?.uptime_pct_7d != null ? Number(row.uptime_pct_7d) : null,
+        avg_latency_ms:
+          row?.avg_latency_ms_7d != null ? Number(row.avg_latency_ms_7d) : null,
       },
     },
   });
@@ -415,29 +422,88 @@ export const checkNowMonitor = async (req: Request, res: Response) => {
 
   const monitor = await findOwnedMonitor(monitorId, userId);
   const result = await checkUrl(monitor.url);
-  const newStatus = result.isUp ? 'up' : 'down';
 
-  const [newCheck, updatedMonitor] = await prisma.$transaction([
-    prisma.checks.create({
-      data: {
-        monitor_id: monitor.id,
-        is_up: result.isUp,
-        status_code: result.status,
-        latency_ms: result.latencyMs,
-        error: result.error,
+  const [lastIncident, previousChecks] = await Promise.all([
+    prisma.incidents.findFirst({
+      where: { monitor_id: monitorId },
+      orderBy: { started_at: 'desc' },
+    }),
+    prisma.checks.findMany({
+      where: { monitor_id: monitorId },
+      orderBy: { checked_at: 'desc' },
+      take: 2,
+      select: {
+        is_up: true,
+        status_code: true,
       },
     }),
-    prisma.monitors.update({
-      where: { id: monitor.id },
-      data: { status: newStatus },
-    }),
   ]);
+
+  const hasOpenIncident =
+    lastIncident !== null && lastIncident.resolved_at === null;
+
+  const recentChecks = [
+    { isUp: result.isUp, status: result.status },
+    ...previousChecks.map((c) => ({
+      isUp: c.is_up,
+      status: c.status_code ?? 0,
+    })),
+  ];
+
+  const action = decideIncident(recentChecks, hasOpenIncident);
+
+  let nextStatus = monitor.status;
+  if (action === 'open') {
+    nextStatus = 'down';
+  } else if (action === 'close') {
+    nextStatus = 'up';
+  } else if (monitor.status === 'unknown' && result.isUp) {
+    nextStatus = 'up';
+  }
+
+  const [newCheck, newStatusMonitor, incident] = await prisma.$transaction(
+    async (tx) => {
+      const createCheck = await tx.checks.create({
+        data: {
+          monitor_id: monitor.id,
+          is_up: result.isUp,
+          status_code: result.status,
+          latency_ms: result.latencyMs,
+          error: result.error,
+        },
+      });
+
+      const updateMonitor = await tx.monitors.update({
+        where: { id: monitor.id },
+        data: { status: nextStatus },
+      });
+
+      let incidentResult = null;
+
+      if (action === 'open') {
+        incidentResult = await tx.incidents.create({
+          data: {
+            monitor_id: monitor.id,
+            cause: result.error,
+          },
+        });
+      } else if (action === 'close' && lastIncident) {
+        incidentResult = await tx.incidents.update({
+          where: { id: lastIncident.id },
+          data: { resolved_at: new Date() },
+        });
+      }
+
+      return [createCheck, updateMonitor, incidentResult];
+    }
+  );
 
   return res.status(200).json({
     message: 'Da kiem tra monitor thanh cong',
     data: {
-      monitor: updatedMonitor,
+      monitor: newStatusMonitor,
       check: serializeCheck(newCheck),
+      incident,
     },
   });
 };

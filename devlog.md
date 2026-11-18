@@ -139,12 +139,51 @@
 * **Helmet:** Tự động tiêm 11 HTTP Security Headers chuẩn OWASP, loại bỏ header `X-Powered-By: Express` để che giấu công nghệ máy chủ, ngăn chặn clickjacking và MIME-sniffing.
 * **Pino vs Morgan/Winston:**
   * Morgan xuất text thô $\rightarrow$ Khó cho các công cụ giám sát log tự động (ELK / Loki / Datadog) truy vấn.
-  * Pino ghi log dạng **Structured JSON**, xử lý bất đồng bộ siêu tốc (nhanh gấp 5 lần Morgan/Winston).
+  * Pino ghi log dạng **Structured JSON**, xử lý bất đồng bộ siêu tốc (nhanh gấp 5 lần Morgan/Winston, không block Event Loop như `console.log`).
   * Trong môi trường Dev: Kết hợp `pino-pretty` để format log có màu sắc và thời gian rõ ràng; khi lên Production: Tự động xuất JSON chuẩn để giám sát.
+
+### 6. Kiến trúc Xử lý Lỗi (Error Handling) & Cơ chế phễu ngầm của Express 5
+* **Bản chất của `throw`:** Lệnh dừng khẩn cấp! Ngay khi chạm vào `throw`, mọi dòng code phía sau lập tức bị hủy bỏ, ném một "quả cầu lỗi" ra ngoài để tìm khối hứng lỗi.
+* **Hành trình quả bóng lỗi trong PingPulse (Cực kỳ trực quan):**
+  1. Hàm `createHttpError(400, 'Ten monitor khong hop le')` sẽ **tạo ra 1 con lỗi custom** (đối tượng `HttpError`) mang theo sẵn mã `statusCode = 400` và câu `message`.
+  2. Lệnh `throw` sẽ **ném thẳng con lỗi custom đó đi**.
+  3. Express 5 tự động bọc ngầm các hàm `async` bằng `Promise.resolve(fn).catch(next)` để chụp lấy con lỗi vừa bị ném mà ta không cần gõ `try/catch` hay `next(err)` bằng tay.
+  4. Quả bóng lỗi nhảy cóc qua toàn bộ các route khác, và **chính con lỗi custom đó biến thành tham số `err` (tham số đầu tiên)** trong bộ 4 tham số: `(err, req, res, next)` của `errorMiddleware.ts`.
+  5. Trong `errorHandler`, ta chỉ cần kiểm tra: `if (err instanceof HttpError)` là bốc ngay được `err.statusCode` (400) và `err.message` để đóng gói JSON trả về cho client!
+* **Cơ chế đếm tham số độc nhất của Express:**
+  * Middleware thường: Có **3 tham số** `(req, res, next)`.
+  * Middleware bắt lỗi: Bắt buộc có đủ **4 tham số** `(err, req, res, next)`. Express thấy có `throw` là tự động bỏ qua mọi hàm 3 tham số, tìm đến đúng hàm 4 tham số ở đáy server để xử lý.
+* **Quy tắc vàng: Khi nào cần `try/catch` trong Express 5?**
+  * **Trong Controller / API:** Không cần `try/catch`, cứ `throw` cho Express 5 tự lo đưa về `errorHandler`.
+  * **Trong Utility / Con robot độc lập (`checkUrl.ts`):** Bắt buộc phải có `try/catch`! Vì việc "website khách hàng bị sập" là **kết quả đo đạc nghiệp vụ** (`isUp: false`), không phải lỗi hệ thống của PingPulse; nếu không `try/catch` thì con robot sẽ nổ tung và không ghi được kết quả vào DB.
 
 ---
 
-## 🌐 PHẦN 5: MỞ RỘNG KIẾN TRÚC HỆ THỐNG LỚN (SYSTEM DESIGN)
+## 🧪 PHẦN 5: KIỂM THỬ TỰ ĐỘNG (UNIT TESTING) & NGHỆ THUẬT MOCKING
+
+### 1. Bản chất của Mocking (Diễn viên đóng thế)
+* **Vì sao không gọi mạng thật (Google / link chết)?**
+  * **Không thể test lỗi 500:** Không có website nào trên đời luôn luôn bị lỗi máy chủ 500 suốt 24/7 để bạn test mỗi ngày. Chỉ có Mock mới ép nó trả về mã 500 được trong 1 mili-giây.
+  * **Timeout thực tế quá lâu:** Gõ link không tồn tại, máy tính tốn 3 - 5 giây để dò DNS rồi mới chịu báo lỗi. 100 bài test sẽ tốn 5 phút (Dùng mock: xong trong **0.3 giây**).
+  * **Tránh bị chặn IP (Rate Limit / CAPTCHA):** Chạy test tự động nhiều lần trên GitHub Actions sẽ bị Google xem là bot spam và chặn IP.
+  * **Chạy Offline 100%:** Ngồi trên máy bay, tàu xe hay mất mạng wifi vẫn chạy test xanh mướt.
+* **Nguyên lý của Unit Test với Mock:**
+  * Mock chỉ "đóng thế" hàm I/O mạng (`fetch()`).
+  * **Toàn bộ não và logic tính toán bên trong hàm của bạn VẪN CHẠY THẬT 100%:** Phép tính độ trễ `performance.now() - start`, logic so sánh `res.status < 400`, và khối `try/catch` bắt lỗi.
+* **Lỗi HTTP 500 vs Lỗi Đứt cáp/Timeout:**
+  * Khi web bị lỗi **500**: Máy chủ vẫn phản hồi kịp $\rightarrow$ `fetch` vẫn thành công trong `try` $\rightarrow$ **`latencyMs` vẫn là kiểu `number` ($\ge 0$)**!
+  * Khi bị **đứt mạng / timeout**: Không có ai phản hồi $\rightarrow$ Rơi xuống khối `catch` $\rightarrow$ **`latencyMs` lúc này mới bằng `null`**!
+
+### 2. Lập trình phòng thủ: Type Guard trong `catch (err)`
+* **Tại sao viết `err instanceof Error ? err.message : String(err)`?**
+  * Trong JavaScript, bạn có thể `throw` bất cứ thứ gì: chuỗi `throw "Lỗi rồi"`, con số `throw 500`, hoặc object trần.
+  * 99% lỗi chuẩn là `instanceof Error` (có sẵn `.message` và `.stack`).
+  * 1% ai đó ném chuỗi thô $\rightarrow$ Biến `err` không hề có `.message`! `String(err)` giúp ép kiểu an toàn ra chuỗi mà không bao giờ bị văng lỗi `undefined`.
+  * Thỏa mãn chuẩn kiểu dữ liệu `unknown` của TypeScript trong khối `catch`.
+
+---
+
+## 🌐 PHẦN 6: MỞ RỘNG KIẾN TRÚC HỆ THỐNG LỚN (SYSTEM DESIGN)
 
 Khi lượng người dùng lên tới hàng trăm nghìn hoặc hàng triệu:
 1. **Caching với Redis:** Lưu dữ liệu đọc nhiều (80% lượt xem) trên RAM. Trả lời ngay lập tức mà không cần chạm vào Database.
@@ -153,7 +192,7 @@ Khi lượng người dùng lên tới hàng trăm nghìn hoặc hàng triệu:
 
 ---
 
-## 💻 PHẦN 6: FRONTEND INTEGRATION & HYDRATION
+## 💻 PHẦN 7: FRONTEND INTEGRATION & HYDRATION
 
 1. **Next.js App Router (SSR vs Client Component):**
    * Mặc định component chạy trên Server để tối ưu SEO và tải trang nhanh.
