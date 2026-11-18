@@ -203,3 +203,52 @@ Khi lượng người dùng lên tới hàng trăm nghìn hoặc hàng triệu:
 3. **URL State vs In-Page State:**
    * Dùng `useState` cho Modal/Popup và phân trang nội bộ để chuyển cảnh tức thì không giật URL.
    * Dùng URL Query Params (`?page=2`) khi cần chia sẻ đường dẫn trực tiếp (Sharable Link).
+
+---
+
+## 🛡️ PHẦN 8: KIẾN TRÚC SỰ CỐ, DATABASE TRANSACTION (ACID) & INTEGRATION TESTING
+
+### 1. Hàm thuần (Pure Function) & Cỗ máy trạng thái sự cố (State Machine)
+* **Tách Não khỏi Chân Tay:**
+  * Logic nghiệp vụ phán quyết sự cố (`decideIncident.ts`) được tách hoàn toàn độc lập khỏi Database và Express.
+  * **Hàm thuần (Pure Function):** Cùng đầu vào $\rightarrow$ Luôn ra cùng đầu ra, không gây tác dụng phụ (no side-effects). Nhờ vậy, Unit Test chạy siêu tốc trong **vài mili-giây**, không phụ thuộc mạng hay Postgres.
+* **Chống báo động giả (Alert Fatigue) bằng State Machine:**
+  * Không bao giờ báo sập chỉ vì 1 lần ping thất bại (có thể do mạng chập chờn tạm thời).
+  * Chỉ quan tâm tới **Thời điểm chuyển trạng thái (State Transition)**:
+    1. Đang bình thường $\rightarrow$ **3 lần lỗi liên tiếp**: Chính thức mở sự cố (`action = 'open'`).
+    2. Đang có sự cố $\rightarrow$ **2 lần OK liên tiếp**: Đóng sự cố, phục hồi (`action = 'close'`).
+    3. Mọi tình huống khác (đang sập vẫn sập, đang sống vẫn sống, hoặc lỗi xen kẽ): Không làm phiền ai cả (`action = 'none'`).
+
+### 2. Thiết kế Database cho Vòng đời Sự cố (`resolved_at: null`)
+* **1 mũi tên trúng 2 đích:** Thay vì tạo cột `is_open: boolean`, dùng cột `resolved_at: DateTime?`.
+  * `null`: Sự cố **đang mở** (chưa giải quyết).
+  * Có ngày giờ: Sự cố **đã đóng**.
+  * Tính được chính xác thời gian gián đoạn dịch vụ: $\text{Downtime} = \text{resolved\_at} - \text{started\_at}$.
+* **Quy luật bất biến (Invariant):**
+  * Tại một thời điểm, một monitor chỉ có tối đa 1 sự cố đang mở.
+  * Do đó, **sự cố đang mở (nếu có) BẮT BUỘC LUÔN LÀ SỰ CỐ MỚI NHẤT!**
+  * Chỉ cần bốc sự cố mới nhất (`started_at DESC LIMIT 1`), nếu nó đã đóng thì chắc chắn toàn bộ quá khứ đều đã đóng.
+
+### 3. Phân biệt `ORDER BY` vs `INDEX` trong Database
+* **`ORDER BY` là MỆNH LỆNH (YÊU CẦU):** Nói cho Database biết bạn muốn lấy dữ liệu theo thứ tự nào. Nếu không có `ORDER BY`, Database có quyền bốc ra bất kỳ dòng nào ngẫu nhiên.
+* **`INDEX` là CÔNG CỤ (ĐƯỜNG TẮT):** Giúp Database thực thi mệnh lệnh `ORDER BY` trong **`0.01 ms`** mà không phải còng lưng quét toàn bộ bảng rồi mang lên RAM sort thủ công.
+* **Composite Index `[monitor_id, started_at(sort: Desc)]`:**
+  * Cột 1 (`monitor_id`): Phục vụ mệnh đề `WHERE` (gom nhóm các sự cố của cùng một monitor vào một cành B-Tree).
+  * Cột 2 (`started_at DESC`): Phục vụ mệnh đề `ORDER BY` (trong nội bộ từng monitor, các sự cố đã được xếp sẵn từ mới nhất đến cũ nhất).
+
+### 4. Database Transaction & Tính nguyên tử (ACID - Atomicity)
+* **Nguyên tắc "Được ăn cả, ngã về không" (All-or-Nothing):**
+  * Khi mở sự cố, hệ thống phải vừa ghi vào bảng `incidents`, vừa đổi `monitors.status = 'down'`.
+  * Nếu không dùng Transaction: Lỗi giữa chừng sẽ làm dữ liệu bị lệch pha (bảng này ghi rồi, bảng kia chưa ghi).
+  * Bọc trong `prisma.$transaction(async (tx) => { ... })`: Đảm bảo tất cả cùng thành công (**Commit**), hoặc nếu có lỗi dù ở dòng cuối cùng thì Database cũng tự động thu hồi lại sạch sẽ (**Rollback**).
+* **Kiểm chứng thực tế:** Cố tình `throw new Error()` ngay sau khi tạo check $\rightarrow$ PostgreSQL kích hoạt lệnh `ROLLBACK` $\rightarrow$ Số lượng bản ghi trong DB giữ nguyên, không có dữ liệu rác nào bị ghi dở dang.
+
+### 5. Kim tự tháp kiểm thử & Integration Testing với Supertest
+* **3 Tầng kiểm thử chuẩn:**
+  1. **Unit Test (70%):** Tháo rời từng con ốc vít (hàm logic) ra test độc lập, chạy offline trong vài mili-giây.
+  2. **Integration Test (20%):** Ráp Router + Controller + Middleware + Database thật lại với nhau, kiểm tra sự ăn khớp giữa các bộ phận.
+  3. **E2E Test (10%):** Bật trình duyệt thật (Playwright/Cypress) đóng vai người dùng click chuột từ đầu đến cuối.
+* **Sức mạnh của `supertest`:**
+  * Nhúng trực tiếp instance `app` của Express vào bộ nhớ RAM.
+  * Bắn HTTP request mô phỏng người dùng thật (Đăng ký $\rightarrow$ Đăng nhập lấy JWT $\rightarrow$ Tạo Monitor $\rightarrow$ Check Now) mà không cần bật server mở port mạng thật.
+  * Tự động dọn dẹp Database sau khi test (`afterAll`) để các lần chạy test luôn độc lập và lặp lại được 100%.

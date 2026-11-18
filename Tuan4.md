@@ -16,7 +16,7 @@
 - [x] **Task 4.2:** Viết hàm thuần `decideIncident(recent: Check[], hasOpenIncident: boolean)` xử lý nghiệp vụ mở/đóng sự cố (3 giờ). ✅ ĐÃ HOÀN THÀNH
 - [x] **Task 4.3:** Viết 8 - 10 Unit Tests bao phủ toàn bộ các trường hợp biên (Edge Cases): ít hơn 3 check, đang có sự cố, lỗi xen kẽ OK, mảng rỗng (3 giờ). ✅ ĐÃ HOÀN THÀNH
 - [x] **Task 4.4:** Thêm bảng `incidents` vào `schema.prisma`, chạy Migration. Mở/đóng sự cố trong Transaction (`prisma.$transaction`) và thử nghiệm cơ chế Rollback (2 giờ). ✅ ĐÃ HOÀN THÀNH
-- [ ] **Task 4.5:** Viết 1 bài Integration Test bằng `supertest` kiểm thử luồng API hoàn chỉnh: Đăng ký $\rightarrow$ Đăng nhập $\rightarrow$ Tạo monitor $\rightarrow$ Check now (2 giờ).
+- [x] **Task 4.5:** Viết 1 bài Integration Test bằng `supertest` kiểm thử luồng API hoàn chỉnh: Đăng ký $\rightarrow$ Đăng nhập $\rightarrow$ Tạo monitor $\rightarrow$ Check now (2 giờ). ✅ ĐÃ HOÀN THÀNH
 
 ---
 
