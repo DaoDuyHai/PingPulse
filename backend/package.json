@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "benchmark": "tsx src/scripts/benchmark.ts",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
@@ -25,12 +26,14 @@
   },
   "homepage": "https://github.com/DaoDuyHai/PingPulse#readme",
   "devDependencies": {
+    "@types/autocannon": "^7.12.7",
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^26.6.6",
     "@types/supertest": "^7.2.1",
+    "autocannon": "^9.0.0",
     "eslint": "^10.14.0",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.9.10",

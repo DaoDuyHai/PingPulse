@@ -313,3 +313,25 @@ Khi lượng người dùng lên tới hàng trăm nghìn hoặc hàng triệu:
 * **Nâng cấp Startup Health Check:**
   * Bổ sung `await prisma.$connect()` và `await redis.ping()` ngay trước khi `app.listen()`.
   * Nếu PostgreSQL (port 5433) hoặc Redis (port 6379) chưa sẵn sàng $\rightarrow$ Server chủ động từ chối khởi động và báo lỗi tức thì, tránh lỗi âm thầm khi đang chạy production.
+
+### 7. Kỹ thuật Rate Limiting nâng cao với Redis Lua Script
+* **Vì sao không gọi 3 lệnh riêng lẻ (`INCR` $\rightarrow$ `EXPIRE` $\rightarrow$ `TTL`)?**
+  * Tốn 3 lần độ trễ mạng (3 Round-trips) giữa Node.js và Redis.
+  * Nguy cơ Race Condition: Nếu máy chủ Node.js bị crash ngay sau lệnh `INCR` trước khi kịp gọi `EXPIRE`, key đó sẽ tồn tại vĩnh viễn trên RAM, người dùng bị chặn vĩnh viễn!
+* **Giải pháp: Gom toàn bộ vào Lua Script nguyên tử (Atomic Execution):**
+  * Lua script được Redis biên dịch và chạy tuần tự trong Event Loop, đảm bảo `INCR` và `EXPIRE` xảy ra đồng thời trong 1 lần gọi mạng duy nhất (`redis.eval(...)`).
+* **Chuẩn hóa Header theo chuẩn thế giới (IETF / GitHub / Stripe):**
+  * `X-RateLimit-Limit`: Giới hạn tối đa (60).
+  * `X-RateLimit-Remaining`: Số lượt còn lại trước khi bị chặn.
+  * `X-RateLimit-Reset`: Số giây đếm lùi đến khi cửa sổ được làm mới.
+  * `Retry-After`: Trả về khi bị mã HTTP `429 Too Many Requests`, thông báo cho client biết chính xác phải chờ bao nhiêu giây.
+* **Chiến lược Phao cứu sinh (Fail-Open):**
+  * Nếu Redis gặp sự cố, middleware bắt lỗi trong `catch`, ghi log cảnh báo và gọi `next()` cho request đi tiếp, không bao giờ làm chết toàn bộ ứng dụng (500 Error).
+
+### 8. Thực nghiệm đo lường hiệu năng bằng Autocannon (Con số "Vàng" cho CV)
+* Dưới tải 30 kết nối dồn dập trong 5 giây:
+  * **Thông lượng (Throughput):** Tăng từ **1,185 req/s** lên **3,365 req/s** (bứt phá gấp **~2.84x lần**).
+  * **Độ trễ trung bình:** Giảm từ **24.85 ms** xuống **8.42 ms** (nhanh hơn gấp ~3 lần).
+  * **Độ trễ p99:** Giảm từ **38.00 ms** xuống **17.00 ms** (giảm hơn 55% độ trễ cho nhóm người dùng trải nghiệm tệ nhất).
+  * **Tỷ lệ thành công (2xx):** Đạt **100%** (16,820 request), không rớt một kết nối nào.
+* Toàn bộ kết quả và phân tích chi tiết được lưu trữ tại file [REPORT_WEEK5.md](REPORT_WEEK5.md).

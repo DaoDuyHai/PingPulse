@@ -14,9 +14,9 @@
 
 - [x] **Task 5.1:** Thêm Redis vào `docker-compose.yml`, khởi động container và thực hành 5 lệnh nền tảng trong `redis-cli`: `SET`, `GET`, `EXPIRE`, `TTL`, `INCR` (2 giờ).
 - [x] **Task 5.2:** Thêm cột `slug` vào model `monitors` (`schema.prisma`), chạy Migration. Viết API công khai `GET /api/status/:slug` áp dụng **Cache-Aside Pattern** với TTL = 30 giây (4 giờ).
-- [ ] **Task 5.3:** Cài đặt cơ chế **Xóa cache chủ động (Cache Invalidation)**: Khi monitor đổi trạng thái (trong `checkNowMonitor` hoặc cập nhật thông tin), tự động xóa key Redis tương ứng (1 giờ).
-- [ ] **Task 5.4:** Viết Middleware **Rate Limiting** dùng Redis `INCR` + `EXPIRE` chặn mỗi IP tối đa 60 request/phút, trả về `429 Too Many Requests` kèm header `Retry-After` (3 giờ).
-- [ ] **Task 5.5:** Dùng công cụ bắn tải `autocannon` so sánh hiệu năng của API `/api/status/:slug` khi **Chưa có Cache** vs **Đã có Cache** (req/s, p95 latency), lập báo cáo `REPORT_WEEK5.md` (2 giờ).
+- [x] **Task 5.3:** Cài đặt cơ chế **Xóa cache chủ động (Cache Invalidation)**: Khi monitor đổi trạng thái (trong `checkNowMonitor` hoặc cập nhật thông tin), tự động xóa key Redis tương ứng (1 giờ).
+- [x] **Task 5.4:** Viết Middleware **Rate Limiting** dùng Redis `INCR` + `EXPIRE` chặn mỗi IP tối đa 60 request/phút, trả về `429 Too Many Requests` kèm header `Retry-After` (3 giờ).
+- [x] **Task 5.5:** Dùng công cụ bắn tải `autocannon` so sánh hiệu năng của API `/api/status/:slug` khi **Chưa có Cache** vs **Đã có Cache** (req/s, p95 latency), lập báo cáo `REPORT_WEEK5.md` (2 giờ).
 
 ---
 

@@ -10,14 +10,18 @@ export const getPublicSlug = async (req: Request, res: Response) => {
   }
 
   const cacheKey = `status:${slug.trim()}`;
+  const noCache =
+    req.query.noCache === 'true' || req.headers['x-no-cache'] === 'true';
 
-  const cacheData = await redis.get(cacheKey);
+  if (!noCache) {
+    const cacheData = await redis.get(cacheKey);
 
-  if (cacheData) {
-    return res.status(200).json({
-      source: 'cache',
-      data: JSON.parse(cacheData),
-    });
+    if (cacheData) {
+      return res.status(200).json({
+        source: 'cache',
+        data: JSON.parse(cacheData),
+      });
+    }
   }
 
   const monitor = await prisma.monitors.findUnique({
@@ -27,6 +31,7 @@ export const getPublicSlug = async (req: Request, res: Response) => {
     select: {
       id: true,
       name: true,
+      slug: true,
       url: true,
       status: true,
       interval_sec: true,
@@ -67,7 +72,9 @@ export const getPublicSlug = async (req: Request, res: Response) => {
     })),
   };
 
-  await redis.set(cacheKey, JSON.stringify(sanitizedData), 'EX', 30);
+  if (!noCache) {
+    await redis.set(cacheKey, JSON.stringify(sanitizedData), 'EX', 30);
+  }
   return res.status(200).json({
     source: 'db',
     data: sanitizedData,

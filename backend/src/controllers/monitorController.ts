@@ -4,6 +4,7 @@ import { prisma } from '../config/db.js';
 import { checkUrl } from '../checker/checkUrl.js';
 import { createHttpError } from '../utils/httpError.js';
 import { decideIncident } from '../incident/decideIncident.js';
+import { redis } from '../config/redis.js';
 
 const MAX_MONITORS_PER_USER = 5;
 
@@ -367,7 +368,7 @@ export const editDetailMonitor = async (req: Request, res: Response) => {
   const monitorId = parseMonitorId(req.params.id);
   const { name, interval_sec } = req.body;
 
-  await findOwnedMonitor(monitorId, userId);
+  const monitor = await findOwnedMonitor(monitorId, userId);
 
   if (name === undefined && interval_sec === undefined) {
     throw createHttpError(
@@ -397,6 +398,10 @@ export const editDetailMonitor = async (req: Request, res: Response) => {
     },
   });
 
+  if (monitor.slug) {
+    await redis.del(`status:${monitor.slug}`);
+  }
+
   return res.status(200).json({
     message: 'Da cap nhat monitor thanh cong',
     data: updated,
@@ -407,11 +412,15 @@ export const deleteMonitor = async (req: Request, res: Response) => {
   const userId = getUserId(req);
   const monitorId = parseMonitorId(req.params.id);
 
-  await findOwnedMonitor(monitorId, userId);
+  const monitor = await findOwnedMonitor(monitorId, userId);
 
   await prisma.monitors.delete({
     where: { id: monitorId },
   });
+
+  if (monitor.slug) {
+    await redis.del(`status:${monitor.slug}`);
+  }
 
   return res.status(200).json({ message: 'Da xoa monitor thanh cong' });
 };
@@ -497,6 +506,10 @@ export const checkNowMonitor = async (req: Request, res: Response) => {
       return [createCheck, updateMonitor, incidentResult];
     }
   );
+
+  if (monitor.slug) {
+    await redis.del(`status:${monitor.slug}`);
+  }
 
   return res.status(200).json({
     message: 'Da kiem tra monitor thanh cong',
