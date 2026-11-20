@@ -1,4 +1,4 @@
-# ⚡ PingPulse — High-Performance Uptime & Incident Monitoring Service
+# ⚡ PingPulse — Nền tảng Giám sát Uptime & Sự cố Hiệu năng cao (Backend Engine)
 
 <div align="center">
 
@@ -10,200 +10,198 @@
 ![Vitest](https://img.shields.io/badge/Vitest-84%20Passing-6E9F18?style=for-the-badge&logo=vitest&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
 
-**An enterprise-grade, event-driven Uptime and Incident Monitoring platform engineered for high-throughput, sub-millisecond status dispatch, and fault-tolerant background scheduling.**
+**Hệ thống Backend chuyên sâu theo kiến trúc hướng sự kiện (Event-Driven), xử lý tác vụ nền bất đồng bộ qua hàng đợi BullMQ, tối ưu hóa truy vấn PostgreSQL hàng triệu dòng và tăng tốc phản hồi bằng Redis Cache-Aside.**
 
-[Key Features](#-architectural-highlights) • [Architecture](#-system-architecture) • [Benchmarks](#-performance-benchmarks-autocannon) • [Quick Start](#-quick-start) • [Testing](#-testing--quality-assurance)
+[Tính năng Nổi bật](#-các-điểm-sáng-về-kiến-trúc) • [Sơ đồ Kiến trúc](#-sơ-đồ-kiến-trúc-hệ-thống) • [Đo lường Hiệu năng](#-kết-quả-đo-lường-hiệu-năng-thực-tế-autocannon) • [Cài đặt & Khởi chạy](#-hướng-dẫn-cài-đặt--khởi-chạy) • [Kiểm thử Tự động](#-kiểm-thử-tự-động-testing)
 
 </div>
 
 ---
 
-## 🌟 Executive Overview
+## 🌟 Giới thiệu Dự án
 
-**PingPulse** is an asynchronous monitoring engine designed to track website availability, latency metrics, and operational incidents at scale. Rather than relying on naive blocking API requests, PingPulse enforces a decoupled **Producer-Consumer architecture** using **BullMQ** and **Redis**, backed by **PostgreSQL** query optimizations, pure functional state transitions, and in-memory Cache-Aside acceleration.
+**PingPulse** là hệ thống giám sát tính khả dụng (Uptime), đo lường độ trễ (Latency) và tự động quản lý vòng đời sự cố (Incidents) của các website và dịch vụ mạng theo chu kỳ thời gian thực.
 
-### 🎯 Key Engineering Pillars
-- **Decoupled Asynchronous Processing:** Express API processes zero network I/O requests directly. All HTTP ping operations are offloaded to an isolated background worker pool running in a dedicated OS process.
-- **Data Integrity & Consistency:** Pure state machine (`decideIncident`) evaluates downtime patterns; state changes, check logs, and incidents are committed atomically via PostgreSQL ACID transactions.
-- **High-Throughput Caching:** Public status pages leverage a Redis Cache-Aside layer with active invalidation, delivering a **~2.84x throughput boost (3,365 req/s)** and **55% lower p99 latency (17ms)**.
-- **Industrial Rate Limiting:** Sliding-window rate limiter powered by atomic Redis Lua scripts (`INCR` + `EXPIRE` + `TTL`) returning standard IETF rate-limit headers with fail-open fallback.
+Khác với các ứng dụng CRUD thông thường (gọi API kiểm tra trực tiếp gây nghẽn luồng mạng), PingPulse được thiết kế chuẩn mực theo mô hình **Producer - Queue - Consumer**:
+- **API Server (Producer):** Tiếp nhận yêu cầu, xác thực và đặt lịch công việc vào hàng đợi chỉ trong **< 10ms**.
+- **Worker Process (Consumer):** Một tiến trình Node.js hoàn toàn độc lập, bốc việc từ Redis để ping mạng và cập nhật trạng thái mà không làm ảnh hưởng đến luồng phục vụ người dùng.
 
 ---
 
-## 🏗️ System Architecture
+## 🏗️ Sơ đồ Kiến trúc Hệ thống
 
-PingPulse separates API ingestion from background network pinging across isolated Node.js Event Loops:
+PingPulse phân tách rõ ràng giữa tiến trình xử lý API và tiến trình chạy ngầm qua 2 Event Loop độc lập:
 
 ```mermaid
 flowchart TD
-    Client["Client / Dashboard"] -->|"REST API Requests"| API["Express API Process (Port 5000)"]
+    Client["Client / Bảng điều khiển"] -->|"REST API Requests"| API["Express API Server (Cổng 5000)"]
     
-    subgraph Ingestion_Layer["1. Ingestion and Orchestration Layer"]
-        API -->|"CRUD Operations"| DB[("PostgreSQL (Prisma ORM)")]
-        API -->|"Register Schedulers"| Queue["BullMQ Queue (monitor-checks)"]
-        API -->|"Rate Limiting"| RedisCache[("Redis 7 In-Memory Store")]
+    subgraph Ingestion_Layer["1. Tầng Tiếp nhận và Điều phối"]
+        API -->|"CRUD Dữ liệu"| DB[("PostgreSQL (Prisma ORM)")]
+        API -->|"Đặt lịch ping"| Queue["BullMQ Queue (monitor-checks)"]
+        API -->|"Giới hạn tần suất"| RedisCache[("Redis 7 (Bộ nhớ đệm RAM)")]
     end
 
-    subgraph Background_Worker["2. Independent Worker Process (src/worker.ts)"]
-        Queue -->|"Fetch Jobs (concurrency: 5)"| Worker["BullMQ Worker Engine"]
-        Worker -->|"HTTP Ping"| Target["External Websites"]
-        Worker -->|"Evaluate State"| Brain["decideIncident State Machine"]
-        Brain -->|"ACID Transaction"| DB
-        Brain -->|"Invalidate Cache"| RedisCache
+    subgraph Background_Worker["2. Tiến trình Worker Chạy ngầm (src/worker.ts)"]
+        Queue -->|"Bốc job (concurrency: 5)"| Worker["BullMQ Worker Engine"]
+        Worker -->|"Ping mạng HTTP"| Target["Website của người dùng"]
+        Worker -->|"Phán quyết sự cố"| Brain["decideIncident State Machine"]
+        Brain -->|"Ghi dữ liệu (Transaction ACID)"| DB
+        Brain -->|"Xóa cache cũ"| RedisCache
     end
 
-    subgraph Public_Status["3. High-Throughput Public Status Page"]
-        Visitor["Public Users"] -->|"GET /api/status/:slug"| CacheCheck{"Redis Cache Hit?"}
-        CacheCheck -->|"YES"| ReturnCache["Return Cached JSON (2ms)"]
-        CacheCheck -->|"NO"| ReadDB["Query Postgres and Set Cache (TTL 30s)"]
+    subgraph Public_Status["3. Trang Trạng thái Công khai (Public Status)"]
+        Visitor["Người dùng truy cập"] -->|"GET /api/status/:slug"| CacheCheck{"Có Cache trong Redis?"}
+        CacheCheck -->|"CÓ"| ReturnCache["Trả JSON từ RAM (2ms)"]
+        CacheCheck -->|"KHÔNG"| ReadDB["Truy vấn Postgres và Nạp Cache (TTL 30s)"]
     end
 ```
 
 ---
 
-## 🚀 Architectural Highlights
+## 🚀 Các Điểm sáng về Kiến trúc
 
-### 1. Multi-Process Background Worker & Repeatable Schedulers
-* **Process Decoupling:** The API server (`src/index.ts`) handles authentication, validation, and scheduler registration in `< 10ms`. Heavy network ping I/O is delegated to `src/worker.ts`.
-* **Repeatable Job Schedulers:** Uses BullMQ's modern `upsertJobScheduler` to trigger checks dynamically based on each monitor's configured `interval_sec`. Schedulers automatically sync when monitors are created, interval-updated, or deleted—preventing "ghost check" jobs.
-* **Controlled Concurrency:** Configured with `concurrency: 5` to process up to 5 concurrent target pings without saturating network sockets or exhausting DB connection pools.
-* **Graceful Shutdown:** Intercepts `SIGINT` / `SIGTERM` to drain active jobs safely before closing Redis and Database socket connections.
+### 1. Tiến trình Worker Độc lập & Quản lý Lịch trình (BullMQ)
+* **Tách rời tiến trình (Decoupling):** API chính (`src/index.ts`) không bao giờ tự ping mạng. Việc ping HTTP ra ngoài Internet được bàn giao cho `src/worker.ts` chạy trên một core CPU độc lập.
+* **Lịch trình lặp lại (Job Schedulers):** Sử dụng `upsertJobScheduler` của BullMQ v5 để tạo nhịp ping tự động theo chu kỳ `interval_sec`. Đồng bộ vòng đời (Tạo/Sửa/Xóa monitor) giúp triệt tiêu hoàn toàn **Job bóng ma (Ghost Jobs)**.
+* **Kiểm soát tải (`concurrency: 5`):** Mỗi tiến trình Worker xử lý đồng thời tối đa 5 I/O mạng song song, bảo vệ tài nguyên hệ thống không bị tràn RAM, không cạn kiệt socket mạng và không nghẽn connection pool của PostgreSQL.
+* **Tắt máy an toàn (Graceful Shutdown):** Bắt các tín hiệu hệ điều hành `SIGINT` và `SIGTERM`, chờ toàn bộ job đang xử lý dở hoàn tất trước khi đóng kết nối DB/Redis.
 
-### 2. Pure State Machine & ACID Transaction Guarantees
-* **Deterministic Decision Logic:** Incident transitions are evaluated by `decideIncident(recentChecks, hasOpenIncident)`—a zero-dependency pure function verified by comprehensive edge-case tests.
-  - **Open incident:** Triggered on **3 consecutive failed checks**.
-  - **Resolve incident:** Triggered on **2 consecutive successful checks**.
-* **ACID Transactions (`prisma.$transaction`):** Check insertion, monitor status updates (`up` / `down`), and incident record operations occur atomically. Zero risk of phantom states or inconsistent dashboards.
+### 2. Bộ não Phán quyết Sự cố & Giao dịch ACID
+* **Hàm thuần khiết (`decideIncident`):** Tách biệt 100% logic nghiệp vụ khỏi Express và Database:
+  - **Mở sự cố (DOWN):** Khi có **3 lần kiểm tra lỗi liên tiếp**.
+  - **Đóng sự cố (UP):** Khi có **2 lần kiểm tra thành công liên tiếp**.
+* **Đảm bảo tính nhất quán (ACID Transaction):** Sử dụng `prisma.$transaction` để ghi nhận đồng thời: thêm dòng check mới + cập nhật trạng thái monitor + tạo/đóng incident. Tuyệt đối không xảy ra hiện tượng dữ liệu bị lệch pha (Partial write).
 
-### 3. Database Optimization & Index Engineering
-* **Composite B-Tree Indexes:** High-volume time-series queries utilize composite index `(monitor_id, checked_at DESC)` for instantaneous index scans.
-* **LATERAL JOIN Optimization:** Eliminated N+1 query bottlenecks when retrieving monitors with their latest check, extracting top-1 records in a single query pass.
-* **Cursor-Based Pagination:** Replaced offset-based pagination with `WHERE id < :cursor ORDER BY id DESC LIMIT :limit`, guaranteeing $O(1)$ sub-millisecond retrieval regardless of page depth.
+### 3. Tối ưu Cơ sở Dữ liệu PostgreSQL & Đánh Chỉ mục B-Tree
+* **Composite B-Tree Index:** Đánh chỉ mục kép `(monitor_id, checked_at DESC)` dựa trên quy tắc ESR, giúp câu lệnh lọc lịch sử check đạt tốc độ tối đa ($O(\log N)$ ~ 0.1ms).
+* **Kỹ thuật `LATERAL JOIN`:** Khắc phục triệt để lỗi hiệu năng **N+1 Query** khi lấy danh sách monitor kèm lần check mới nhất, chỉ tốn 1 câu SQL duy nhất thay vì $1 + N$ câu truy vấn.
+* **Phân trang bằng con trỏ (Cursor Pagination):** Thay thế kỹ thuật Offset chậm chạp bằng `WHERE id < :cursor ORDER BY id DESC LIMIT 20`, đảm bảo tốc độ phản hồi ở trang 1 hay trang 10.000 đều như nhau ($O(1)$).
 
-### 4. Atomic Rate Limiting (Redis Lua)
-* Sliding-window rate limiter executed atomically inside Redis via a single Lua script (`INCR` + `EXPIRE` + `TTL`), eliminating race conditions and minimizing network round-trips.
-* Injects standard IETF headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, and `Retry-After` on `429 Too Many Requests`.
-* **Fail-Open Strategy:** If Redis experiences downtime, the middleware gracefully logs warnings and allows requests to pass through, preserving system availability.
+### 4. Bộ nhớ đệm Cache-Aside & Giới hạn Tần suất bằng Lua Script
+* **Mô hình Cache-Aside:** Trang trạng thái công khai (`GET /api/status/:slug`) lưu kết quả vào RAM Redis với `TTL = 30s`, che chắn đến 95% lưu lượng đọc vào Database khi có "bão F5".
+* **Xóa cache chủ động (Cache Invalidation):** Ngay khi Worker phát hiện website đổi trạng thái hoặc Admin can thiệp, hệ thống lập tức gọi `redis.del('status:' + slug)`. Dữ liệu người xem luôn tươi mới với độ trễ bằng 0.
+* **Rate Limiting bằng Lua Script:** Gom các lệnh `INCR`, `EXPIRE`, `TTL` vào một script Lua chạy nguyên tử (Atomic) trong Event Loop của Redis, chống Race Condition và trả về các Header chuẩn quốc tế (`X-RateLimit-*`, `429 Retry-After`).
 
 ---
 
-## 📊 Performance Benchmarks (Autocannon)
+## 📊 Kết quả Đo lường Hiệu năng Thực tế (Autocannon)
 
-Public status page throughput was benchmarked under heavy synthetic load using **Autocannon** (30 concurrent connections over 5 seconds):
+Thực nghiệm đo lường tải trên endpoint Public Status Page dưới áp lực **30 kết nối đồng thời trong 5 giây liên tục**:
 
-| Metric | 🐘 Direct Database (Postgres) | ⚡ Cache-Aside (Redis RAM) | Improvement |
+| Chỉ số đo lường | 🐘 Truy vấn Trực tiếp (Postgres) | ⚡ Có Cache-Aside (Redis RAM) | Mức độ Cải thiện |
 | :--- | :---: | :---: | :---: |
-| **Throughput (Requests/sec)** | **1,185 req/s** | **3,365 req/s** | 🚀 **+184% (~2.84x)** |
-| **Total Requests Handled** | 5,926 requests | **16,820 requests** | **+10,894 requests** |
-| **Average Latency** | 24.85 ms | **8.42 ms** | 🎯 **~3x Faster** |
-| **p99 Latency** | 38.00 ms | **17.00 ms** | ⚡ **55% Latency Reduction** |
-| **Success Rate (2xx)** | 100% (0 errors) | 100% (0 errors) | **Zero Dropped Requests** |
+| **Thông lượng (Throughput)** | **1,185 req/s** | **3,365 req/s** | 🚀 **Tăng vọt ~2.84x lần** |
+| **Tổng số Request xử lý (5s)** | 5,926 requests | **16,820 requests** | **+10,894 requests** |
+| **Độ trễ trung bình (Avg Latency)** | 24.85 ms | **8.42 ms** | 🎯 **Nhanh hơn gấp ~3 lần** |
+| **Độ trễ 99% người dùng (p99)** | 38.00 ms | **17.00 ms** | ⚡ **Giảm hơn 55% độ trễ** |
+| **Tỷ lệ thành công (2xx)** | 100% (0 lỗi) | 100% (0 lỗi) | **Không rớt 1 request nào** |
 
-> **Conclusion:** Active cache invalidation guarantees zero stale data, while Redis in-memory acceleration shields PostgreSQL from 95%+ of read traffic during traffic spikes or outage storms.
+> *Chi tiết báo cáo và biểu đồ phân tích được lưu tại file [REPORT_WEEK5.md](REPORT_WEEK5.md).*
 
 ---
 
-## 📂 Project Structure
+## 📂 Cấu trúc Thư mục Dự án
 
 ```text
 PingPulse/
 ├── src/
-│   ├── checker/              # Network ping engine (checkUrl)
-│   ├── config/               # Database (Prisma), Redis, and Pino logger
-│   ├── controllers/          # Express route controllers (Monitors, Status, Users)
-│   ├── incident/             # Pure functional state machine (decideIncident)
-│   ├── middlewares/          # Auth JWT & Redis Lua Rate Limiter
-│   ├── queues/               # BullMQ queue producer definitions
-│   ├── routes/               # API endpoint route declarations
-│   ├── tests/                # 84 automated Vitest test cases
-│   ├── utils/                # Pure utility functions (pick, omit, chunk, retry)
-│   ├── workers/              # BullMQ worker processor (checkProcessor)
-│   ├── worker.ts             # Standalone background worker process
-│   └── index.ts              # API server entrypoint (Express)
+│   ├── checker/              # Module kiểm tra mạng HTTP (checkUrl)
+│   ├── config/               # Cấu hình Database (Prisma), Redis và Pino Logger
+│   ├── controllers/          # Bộ điều khiển API (Monitors, Status Page, Users)
+│   ├── incident/             # Bộ não phán quyết sự cố thuần khiết (decideIncident)
+│   ├── middlewares/          # Middleware xác thực JWT & Giới hạn tần suất (Rate Limiter)
+│   ├── queues/               # Định nghĩa hàng đợi công việc BullMQ
+│   ├── routes/               # Khai báo các tuyến đường dẫn API
+│   ├── tests/                # 84 bài kiểm thử tự động với Vitest
+│   ├── utils/                # Hàm tiện ích thuần (pick, omit, chunk, retry)
+│   ├── workers/              # Xử lý logic công việc check (checkProcessor)
+│   ├── worker.ts             # Tiến trình Worker chạy ngầm độc lập
+│   └── index.ts              # Điểm khởi động Server Express API
 ├── prisma/
-│   ├── migrations/           # Database migration history
-│   └── schema.prisma         # Database schema, relations, & indexes
-├── docker-compose.yml        # Multi-container orchestration (PostgreSQL 16 & Redis 7)
-├── package.json              # Backend scripts & dependency manifests
-├── tsconfig.json             # Strict TypeScript compiler configuration
-├── vitest.config.ts          # Test suite runner configuration
-├── devlog.md                 # Comprehensive backend engineering journal (8 sections)
-├── REPORT_WEEK5.md           # Autocannon load testing benchmark report
+│   ├── migrations/           # Lịch sử thay đổi cấu trúc cơ sở dữ liệu
+│   └── schema.prisma         # Định nghĩa Schema bảng, quan hệ & Index
+├── docker-compose.yml        # Điều phối môi trường Docker (PostgreSQL 16 & Redis 7)
+├── package.json              # Khai báo thư viện và kịch bản thực thi
+├── tsconfig.json             # Cấu hình trình biên dịch TypeScript nghiêm ngặt
+├── vitest.config.ts          # Cấu hình bộ khung kiểm thử Vitest
+├── devlog.md                 # Sổ tay kiến thức kiến trúc Backend chuyên sâu (8 phần)
+├── REPORT_WEEK5.md           # Báo cáo đo tải hiệu năng chi tiết
 └── README.md
 ```
 
 ---
 
-## 🛠️ Quick Start
+## 🛠️ Hướng dẫn Cài đặt & Khởi chạy
 
-### Prerequisites
-- [Node.js](https://nodejs.org/) (v20+ recommended)
+### Yêu cầu Tiên quyết
+- [Node.js](https://nodejs.org/) (Khuyến nghị phiên bản LTS 20+)
 - [Docker](https://www.docker.com/) & Docker Compose
-- `npm`
+- Quản lý gói `npm`
 
-### 1. Clone & Install Dependencies
+### 1. Tải mã nguồn & Cài đặt Thư viện
 ```bash
 git clone https://github.com/DaoDuyHai/PingPulse.git
 cd PingPulse
 npm install
 ```
 
-### 2. Launch Infrastructure (Docker Compose)
-Start PostgreSQL 16 and Redis 7 containers:
+### 2. Khởi động Cơ sở hạ tầng (Docker Compose)
+Bật các container PostgreSQL 16 và Redis 7 chạy ngầm:
 ```bash
 docker compose up -d
 ```
 
-### 3. Configure Environment Variables
-Create `.env` in project root:
+### 3. Cấu hình Biến Môi trường
+Tạo file `.env` tại thư mục gốc của dự án:
 ```env
 PORT=5000
 DATABASE_URL="postgresql://postgres:postgres@localhost:5433/pingpulse_db?schema=public"
 REDIS_URL="redis://localhost:6379"
-JWT_SECRET="super-secret-jwt-key"
+JWT_SECRET="chuoi-khoa-bao-mat-jwt-cua-ban"
 NODE_ENV="development"
 ```
 
-### 4. Run Database Migrations
+### 4. Chạy Migration Cơ sở Dữ liệu
 ```bash
 npx prisma migrate dev
 ```
 
-### 5. Launch the Platform
-In **Terminal 1** (API Server):
+### 5. Khởi chạy Ứng dụng
+Mở **Terminal 1** để chạy tiến trình **API Server**:
 ```bash
 npm run dev
-# Server running at http://localhost:5000
+# Server lắng nghe tại cổng http://localhost:5000
 ```
 
-In **Terminal 2** (Background Worker Process):
+Mở **Terminal 2** để chạy tiến trình **Background Worker**:
 ```bash
 npm run worker
-# Worker initialized with concurrency: 5
+# Worker khởi động và lắng nghe hàng đợi với concurrency: 5
 ```
 
 ---
 
-## 🧪 Testing & Quality Assurance
+## 🧪 Kiểm thử Tự động (Testing)
 
-PingPulse enforces strict automated testing across unit, integration, and concurrency scenarios with **100% pass rate**:
+Dự án chú trọng tính đúng đắn và độ tin cậy với **84 bài kiểm thử tự động**, tỷ lệ vượt qua **100%**:
 
 ```bash
 npm test
 ```
 
-### Test Suite Coverage (17 Files / 84 Passing Tests):
-- **Core Logic:** Pure state machine edge cases (`decideIncident`), backoff retry, debouncing, and collection utilities.
-- **Database & Indices:** Prisma queries, cursor pagination, and composite index traversal.
-- **Redis Cache & Rate Limiter:** Cache-Aside lifecycle, active invalidation, and Lua sliding-window rate limit enforcement.
-- **Queue & Worker Engine:** BullMQ job scheduling, repeatable scheduler lifecycle, and graceful worker failure handling.
+### Phạm vi Bao phủ của Test Suite (17 files / 84 tests):
+- **Kiểm thử Đơn vị (Unit Tests):** Bộ não `decideIncident` (mọi trường hợp biên: xen kẽ lỗi/thành công, chưa đủ lần lỗi, đang có sự cố), các hàm tiện ích mảng và đối tượng.
+- **Kiểm thử Tích hợp API (Integration Tests):** Luồng người dùng hoàn chỉnh (Đăng ký $\rightarrow$ Đăng nhập $\rightarrow$ Tạo monitor $\rightarrow$ Check ngay $\rightarrow$ Phân trang Cursor).
+- **Kiểm thử Cache & Rate Limit:** Xác thực chu kỳ sống của Cache-Aside, cơ chế xóa cache khi đổi dữ liệu, kiểm tra mã HTTP 429 khi vượt ngưỡng tần suất.
+- **Kiểm thử Hàng đợi & Worker:** Mô phỏng đẩy job vào Redis thật, Worker bốc job tự động, xử lý trôi chảy khi monitor bị xóa giữa chừng.
 
 ---
 
-## 👤 Author
+## 👤 Tác giả
 
-**Dao Duy Hai**  
-- **Role:** Backend Developer  
+**Đào Duy Hải**  
+- **Vị trí:** Backend Developer  
 - **Email:** haicoder.journey@gmail.com  
 - **GitHub:** [@DaoDuyHai](https://github.com/DaoDuyHai)  
-- **Institution:** Posts and Telecommunications Institute of Technology (PTIT)
+- **Đơn vị:** Học viện Công nghệ Bưu chính Viễn thông (PTIT)
