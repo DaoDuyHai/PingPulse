@@ -107,26 +107,28 @@ Public status page throughput was benchmarked under heavy synthetic load using *
 
 ```text
 PingPulse/
-├── backend/
-│   ├── src/
-│   │   ├── checker/              # Network ping engine (checkUrl)
-│   │   ├── config/               # Database (Prisma), Redis, and Pino logger
-│   │   ├── controllers/          # Express route controllers (Monitors, Status, Users)
-│   │   ├── incident/             # Pure functional state machine (decideIncident)
-│   │   ├── middlewares/          # Auth JWT & Redis Lua Rate Limiter
-│   │   ├── queues/               # BullMQ queue producer definitions
-│   │   ├── routes/               # API endpoint route declarations
-│   │   ├── tests/                # 84 automated Vitest test cases
-│   │   ├── utils/                # Pure utility functions (pick, omit, chunk, retry)
-│   │   ├── workers/              # BullMQ worker processor (checkProcessor)
-│   │   ├── worker.ts             # Standalone background worker process
-│   │   └── index.ts              # API server entrypoint (Express)
-│   ├── prisma/
-│   │   └── schema.prisma         # Database schema, relations, & indexes
-│   └── package.json
-├── docker-compose.yml            # Multi-container orchestration (PostgreSQL 16 & Redis 7)
-├── devlog.md                     # Comprehensive backend engineering journal (8 sections)
-├── REPORT_WEEK5.md               # Autocannon load testing benchmark report
+├── src/
+│   ├── checker/              # Network ping engine (checkUrl)
+│   ├── config/               # Database (Prisma), Redis, and Pino logger
+│   ├── controllers/          # Express route controllers (Monitors, Status, Users)
+│   ├── incident/             # Pure functional state machine (decideIncident)
+│   ├── middlewares/          # Auth JWT & Redis Lua Rate Limiter
+│   ├── queues/               # BullMQ queue producer definitions
+│   ├── routes/               # API endpoint route declarations
+│   ├── tests/                # 84 automated Vitest test cases
+│   ├── utils/                # Pure utility functions (pick, omit, chunk, retry)
+│   ├── workers/              # BullMQ worker processor (checkProcessor)
+│   ├── worker.ts             # Standalone background worker process
+│   └── index.ts              # API server entrypoint (Express)
+├── prisma/
+│   ├── migrations/           # Database migration history
+│   └── schema.prisma         # Database schema, relations, & indexes
+├── docker-compose.yml        # Multi-container orchestration (PostgreSQL 16 & Redis 7)
+├── package.json              # Backend scripts & dependency manifests
+├── tsconfig.json             # Strict TypeScript compiler configuration
+├── vitest.config.ts          # Test suite runner configuration
+├── devlog.md                 # Comprehensive backend engineering journal (8 sections)
+├── REPORT_WEEK5.md           # Autocannon load testing benchmark report
 └── README.md
 ```
 
@@ -142,19 +144,18 @@ PingPulse/
 ### 1. Clone & Install Dependencies
 ```bash
 git clone https://github.com/DaoDuyHai/PingPulse.git
-cd PingPulse/backend
+cd PingPulse
 npm install
 ```
 
 ### 2. Launch Infrastructure (Docker Compose)
 Start PostgreSQL 16 and Redis 7 containers:
 ```bash
-# In project root
 docker compose up -d
 ```
 
 ### 3. Configure Environment Variables
-Create `.env` in `backend/`:
+Create `.env` in project root:
 ```env
 PORT=5000
 DATABASE_URL="postgresql://postgres:postgres@localhost:5433/pingpulse_db?schema=public"
@@ -165,7 +166,6 @@ NODE_ENV="development"
 
 ### 4. Run Database Migrations
 ```bash
-cd backend
 npx prisma migrate dev
 ```
 
@@ -189,7 +189,6 @@ npm run worker
 PingPulse enforces strict automated testing across unit, integration, and concurrency scenarios with **100% pass rate**:
 
 ```bash
-cd backend
 npm test
 ```
 
