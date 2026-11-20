@@ -36,26 +36,26 @@ PingPulse separates API ingestion from background network pinging across isolate
 
 ```mermaid
 flowchart TD
-    Client["🌐 Client / DevOps Dashboard"] -->|REST API Requests| API["⚡ Express API Process (Port 5000)"]
+    Client["Client / Dashboard"] -->|"REST API Requests"| API["Express API Process (Port 5000)"]
     
-    subgraph Ingestion_Layer["1. Ingestion & Orchestration Layer"]
-        API -->|CRUD & Metadata| DB[("🐘 PostgreSQL (Prisma ORM)")]
-        API -->|Upsert Job Schedulers| Queue["📬 BullMQ Queue (monitor-checks)"]
-        API -->|Sliding-Window Rate Limit| RedisCache[("⚡ Redis 7 (In-Memory Data Store)")]
+    subgraph Ingestion_Layer["1. Ingestion and Orchestration Layer"]
+        API -->|"CRUD Operations"| DB[("PostgreSQL (Prisma ORM)")]
+        API -->|"Register Schedulers"| Queue["BullMQ Queue (monitor-checks)"]
+        API -->|"Rate Limiting"| RedisCache[("Redis 7 In-Memory Store")]
     end
 
     subgraph Background_Worker["2. Independent Worker Process (src/worker.ts)"]
-        Queue -->|Fetch Jobs - concurrency: 5| Worker["⚙️ BullMQ Worker Engine"]
-        Worker -->|HTTP Ping (Non-blocking I/O)| Target["🌍 External Targets (Internet)"]
-        Worker -->|Pure Evaluation| Brain["🧠 decideIncident() State Machine"]
-        Brain -->|Atomic Commit (ACID)| DB
-        Brain -->|Bust Stale Cache| RedisCache
+        Queue -->|"Fetch Jobs (concurrency: 5)"| Worker["BullMQ Worker Engine"]
+        Worker -->|"HTTP Ping"| Target["External Websites"]
+        Worker -->|"Evaluate State"| Brain["decideIncident State Machine"]
+        Brain -->|"ACID Transaction"| DB
+        Brain -->|"Invalidate Cache"| RedisCache
     end
 
     subgraph Public_Status["3. High-Throughput Public Status Page"]
-        Visitor["👥 Public Traffic / Consumers"] -->|GET /api/status/:slug| CacheCheck{"Redis Cache Hit?"}
-        CacheCheck -->|YES (2ms)| ReturnCache["⚡ Return JSON from RAM"]
-        CacheCheck -->|NO (Cache Miss)| ReadDB["🐘 Query Postgres + Set Redis (TTL 30s)"]
+        Visitor["Public Users"] -->|"GET /api/status/:slug"| CacheCheck{"Redis Cache Hit?"}
+        CacheCheck -->|"YES"| ReturnCache["Return Cached JSON (2ms)"]
+        CacheCheck -->|"NO"| ReadDB["Query Postgres and Set Cache (TTL 30s)"]
     end
 ```
 
