@@ -335,3 +335,51 @@ Khi lượng người dùng lên tới hàng trăm nghìn hoặc hàng triệu:
   * **Độ trễ p99:** Giảm từ **38.00 ms** xuống **17.00 ms** (giảm hơn 55% độ trễ cho nhóm người dùng trải nghiệm tệ nhất).
   * **Tỷ lệ thành công (2xx):** Đạt **100%** (16,820 request), không rớt một kết nối nào.
 * Toàn bộ kết quả và phân tích chi tiết được lưu trữ tại file [REPORT_WEEK5.md](REPORT_WEEK5.md).
+
+---
+
+## ⚡ PHẦN 8: BULLMQ, HÀNG ĐỢI BẤT ĐỒNG BỘ & TIẾN TRÌNH WORKER ĐỘC LẬP
+
+### 1. Vì sao hệ thống Uptime Monitoring bắt buộc phải dùng Hàng Đợi (Queue)?
+* **Nghẽn luồng xử lý (Blocking API):** Hàm `checkUrl` thực hiện request ra Internet tới website của người dùng, có thể mất từ 500ms đến 10 giây nếu trang web bị treo/sập. Nếu gọi trực tiếp trong API request của Express, Event Loop bị kẹt, người dùng tạo monitor phải chờ đợi mòn mỏi.
+* **Nguyên lý Tách rời (Decoupling):**
+  * **API Process (Producer):** Chỉ làm việc nhẹ: Kiểm tra dữ liệu hợp lệ $\rightarrow$ Ghi DB $\rightarrow$ Đẩy job vào Redis $\rightarrow$ Trả về ngay `201 Created` trong **< 10ms**.
+  * **Worker Process (Consumer):** Một tiến trình Node.js hoàn toàn độc lập, thong thả bốc job từ Redis ra để ping mạng và ghi DB. Nếu website khách bị sập, chỉ có Worker chờ, toàn bộ hệ thống API phục vụ người dùng vẫn chạy nhanh như chớp.
+* **Khả năng chịu lỗi (Fault Tolerance) & Thử lại (Retry):** Nếu máy chủ Worker bị ngắt đột ngột, job vẫn nằm an toàn trên Redis và được tự động bàn giao cho Worker khác xử lý khi khởi động lại, không bao giờ bị mất tác vụ.
+
+### 2. Cấu hình Redis Connection cho BullMQ (`maxRetriesPerRequest: null`)
+* **Hiện tượng:** Nếu không cấu hình, thư viện BullMQ sẽ ném lỗi crash ứng dụng ngay khi khởi động.
+* **Bản chất kỹ thuật:** Worker của BullMQ sử dụng các **Lệnh chặn (Blocking Commands)** của Redis như `BLMOVE` hoặc `BRPOPLPUSH` để lắng nghe job mới. Khi hàng đợi rỗng, kết nối này sẽ chủ động "treo" (chờ đợi) trên Redis socket cho đến khi có job mới xuất hiện mà không cần polling liên tục.
+* Do tính chất chờ đợi chủ động này, Redis client bắt buộc phải đặt `maxRetriesPerRequest: null` để ioredis không hiểu nhầm lệnh treo là một lỗi mạng và ngắt kết nối.
+
+### 3. Vòng đời Lịch trình Công việc (Job Scheduler vs Repeatable Jobs)
+* **Scheduler ID vs Job ID:**
+  * `schedulerId` (ví dụ `scheduler-monitor-10`): Là chiếc "đồng hồ sinh học" định kỳ trong Redis, quy định tần suất chạy (`every: interval_sec * 1000`).
+  * `job.id` (ví dụ `repeat:scheduler-monitor-10:1795...`): Là từng công việc độc lập được sinh ra sau mỗi tích tắc của chiếc đồng hồ đó.
+* **Đồng bộ vòng đời để triệt tiêu "Job Bóng Ma" (Ghost Jobs):**
+  * Khi Tạo mới: Gọi `monitorQueue.upsertJobScheduler(...)` để khởi tạo lịch ping.
+  * Khi Đổi `interval_sec`: Gọi `upsertJobScheduler(...)` đè lên ID cũ để cập nhật chu kỳ mới ngay tức thì.
+  * Khi Xóa Monitor: Bắt buộc gọi `monitorQueue.removeJobScheduler(...)` để xóa chiếc đồng hồ trong Redis. Nếu quên bước này, Worker sẽ mãi mãi ping vào một monitor không còn tồn tại trong Database!
+
+### 4. Tiến trình Worker độc lập & Tham số `concurrency: 5`
+* **Tiến trình độc lập (`src/worker.ts`):** 
+  * Chạy trên một Core CPU riêng biệt với tiến trình API (`src/index.ts`).
+  * Không mở cổng HTTP (tiết kiệm tài nguyên và miễn nhiễm với các cuộc tấn công dò cổng mạng).
+* **`concurrency: 5` là gì?**
+  * Cho phép 1 tiến trình Worker xử lý đồng thời tối đa **5 jobs** cùng lúc.
+  * Vì việc kiểm tra website (`checkUrl`) chủ yếu tiêu tốn thời gian chờ I/O mạng (Network I/O Wait) chứ không ngốn CPU, Event Loop của Node.js xử lý mượt mà hàng chục I/O song song mà không nghẽn.
+* **Cơ chế bốc tải khi có 1.000 monitor cùng lúc:**
+  * 1.000 job xếp hàng trật tự trong Redis.
+  * Worker bốc trước 5 job ra ping. Cứ 1 job hoàn thành (~200ms), Worker lập tức bốc tiếp job thứ 6 vào bù chỗ.
+  * Hệ thống không bao giờ bị cạn kiệt cổng mạng (Socket exhaustion), không tràn RAM và không làm nghẽn PostgreSQL.
+* **Tắt máy an toàn (Graceful Shutdown):**
+  * Lắng nghe tín hiệu `SIGINT` (Ctrl + C) và `SIGTERM` (Docker Stop).
+  * Gọi `await worker.close()` để Worker ngừng nhận job mới, đợi các job đang ping dở hoàn tất rồi mới giải phóng tài nguyên và thoát tiến trình.
+
+### 5. Khép kín vòng đời giám sát: Worker + Pure Function + Transaction + Cache Invalidation
+* Sau mỗi lần Worker ping website tự động:
+  1. Đọc 2 check gần nhất và sự cố gần nhất (`Promise.all` tối ưu I/O).
+  2. Gọi hàm thuần khiết `decideIncident` (từ Tuần 4) để phán quyết mở/đóng sự cố.
+  3. Gói gọn tạo check + cập nhật status + mở/đóng incident trong **PostgreSQL Transaction (`prisma.$transaction`)** đảm bảo tính toàn vẹn dữ liệu (ACID).
+  4. Nếu monitor có trang Public Status Page (`slug`), tự động gọi `redis.del('status:' + slug)` để xóa dữ liệu cũ, giúp người xem Status Page luôn thấy trạng thái mới nhất ngay lập tức.
+

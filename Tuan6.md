@@ -12,11 +12,11 @@
 
 ## 📋 DANH SÁCH CÔNG VIỆC CẦN LÀM (TASKS)
 
-- [ ] **Task 6.1:** Cài đặt `bullmq`, học khái niệm nền tảng (Producer, Queue, Worker, Job), chạy ví dụ "Hello World" gửi và nhận job đầu tiên qua Redis (2 giờ).
-- [ ] **Task 6.2:** Viết Worker nhận job `check`, gọi hàm `checkUrl` cho 1 monitor cụ thể và ghi kết quả vào bảng `checks` trong PostgreSQL (4 giờ).
-- [ ] **Task 6.3:** Thiết lập **Job Scheduler (Lịch chạy lặp lại)**: Mỗi monitor có 1 job chạy định kỳ theo `interval_sec`. Cập nhật lịch trình khi Tạo mới, Sửa interval hoặc Xóa monitor (4 giờ).
-- [ ] **Task 6.4:** Tách Worker thành một tiến trình hoàn toàn độc lập (`src/worker.ts`), cấu hình `concurrency: 5`, thêm service `worker` vào `docker-compose.yml` (2 giờ).
-- [ ] **Task 6.5:** Tích hợp bộ não phán quyết sự cố: Sau mỗi lần Worker check, tự động gọi `decideIncident` (Tuần 4) để mở/đóng sự cố trong Transaction và kích hoạt Xóa cache Redis (Tuần 5) nếu có biến động (2 giờ).
+- [x] **Task 6.1:** Cài đặt `bullmq`, học khái niệm nền tảng (Producer, Queue, Worker, Job), chạy ví dụ "Hello World" gửi và nhận job đầu tiên qua Redis (2 giờ).
+- [x] **Task 6.2:** Viết Worker nhận job `check`, gọi hàm `checkUrl` cho 1 monitor cụ thể và ghi kết quả vào bảng `checks` trong PostgreSQL (4 giờ).
+- [x] **Task 6.3:** Thiết lập **Job Scheduler (Lịch chạy lặp lại)**: Mỗi monitor có 1 job chạy định kỳ theo `interval_sec`. Cập nhật lịch trình khi Tạo mới, Sửa interval hoặc Xóa monitor (4 giờ).
+- [x] **Task 6.4:** Tách Worker thành một tiến trình hoàn toàn độc lập (`src/worker.ts`), cấu hình `concurrency: 5`, thêm service `worker` vào `docker-compose.yml` (2 giờ).
+- [x] **Task 6.5:** Tích hợp bộ não phán quyết sự cố: Sau mỗi lần Worker check, tự động gọi `decideIncident` (Tuần 4) để mở/đóng sự cố trong Transaction và kích hoạt Xóa cache Redis (Tuần 5) nếu có biến động (2 giờ).
 
 ---
 

@@ -18,3 +18,12 @@ redis.on('connect', () => {
 redis.on('error', (err) => {
   logger.error({ err }, 'Loi ket noi voi Redis');
 });
+
+const parsedRedisUrl = new URL(redisUrl);
+
+export const bullmqConnection = {
+  host: parsedRedisUrl.hostname || 'localhost',
+  port: Number(parsedRedisUrl.port) || 6379,
+  password: parsedRedisUrl.password || undefined,
+  maxRetriesPerRequest: null,
+};

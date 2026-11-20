@@ -5,7 +5,7 @@ import { checkUrl } from '../checker/checkUrl.js';
 import { createHttpError } from '../utils/httpError.js';
 import { decideIncident } from '../incident/decideIncident.js';
 import { redis } from '../config/redis.js';
-
+import { monitorQueue } from '../queues/monitorQueue.js';
 const MAX_MONITORS_PER_USER = 5;
 
 function getUserId(req: Request): number {
@@ -143,6 +143,14 @@ export const createMonitor = async (req: Request, res: Response) => {
       })
     )
   );
+
+  for (const m of createdMonitors) {
+    await monitorQueue.upsertJobScheduler(
+      `scheduler-monitor-${m.id}`,
+      { every: m.interval_sec * 1000 },
+      { name: 'check', data: { monitorId: m.id } }
+    );
+  }
 
   return res.status(201).json({
     message: 'Da tao monitor thanh cong',
@@ -402,6 +410,14 @@ export const editDetailMonitor = async (req: Request, res: Response) => {
     await redis.del(`status:${monitor.slug}`);
   }
 
+  if (interval_sec !== undefined) {
+    await monitorQueue.upsertJobScheduler(
+      `scheduler-monitor-${updated.id}`,
+      { every: updated.interval_sec * 1000 },
+      { name: 'check', data: { monitorId: updated.id } }
+    );
+  }
+
   return res.status(200).json({
     message: 'Da cap nhat monitor thanh cong',
     data: updated,
@@ -421,6 +437,8 @@ export const deleteMonitor = async (req: Request, res: Response) => {
   if (monitor.slug) {
     await redis.del(`status:${monitor.slug}`);
   }
+
+  await monitorQueue.removeJobScheduler(`scheduler-monitor-${monitor.id}`);
 
   return res.status(200).json({ message: 'Da xoa monitor thanh cong' });
 };
